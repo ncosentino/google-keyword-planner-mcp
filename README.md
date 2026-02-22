@@ -25,13 +25,20 @@ Available as a statically-linked Go binary **or** a C# Native AOT binary -- no r
 
 You need:
 
-1. A **Google Ads manager account (MCC)** -- the developer token is only available on manager accounts, not regular accounts. Create one free at [ads.google.com/home/tools/manager-accounts](https://ads.google.com/home/tools/manager-accounts/) if you don't have one.
-2. A **Google Ads developer token with Basic or Standard access** -- in your manager account, go to `https://ads.google.com/aw/apicenter` and copy your developer token. **Important:** A new developer token starts in test mode and can only call the API against [test accounts](https://developers.google.com/google-ads/api/docs/best-practices/test-accounts). To call the Keyword Planner API against real accounts, you must apply for Basic or Standard access at the API Center. Google reviews these requests -- it typically takes a few days. Until then, every API call to a real account returns `DEVELOPER_TOKEN_NOT_APPROVED`.
-3. A **Google Ads sub-account linked to your manager account** with billing configured -- the Keyword Planner API requires an account with an active payment method. Create a sub-account from the manager dashboard, add a payment method, and confirm it appears as a client account under your manager. **The sub-account must be linked to your manager account** -- if it's not, API calls return `USER_PERMISSION_DENIED`.
+1. A **Google Ads manager account (MCC)** -- developer tokens are only issued to manager accounts, not regular accounts. Create one free at [ads.google.com/home/tools/manager-accounts](https://ads.google.com/home/tools/manager-accounts/) if you don't have one.
+
+2. A **Google Ads developer token with Basic or Standard access** -- in your manager account, go to `https://ads.google.com/aw/apicenter` and copy your developer token.
+
+   > **⚠️ New tokens start in test mode.** A brand-new developer token can only call the API against [Google Ads test accounts](https://developers.google.com/google-ads/api/docs/best-practices/test-accounts). Calls to any real account return `DEVELOPER_TOKEN_NOT_APPROVED` until you apply for Basic access. To apply: in the API Center (`https://ads.google.com/aw/apicenter`), click **Apply for Basic Access** and fill in the form. Google reviews requests within a few days. You do not need Standard access -- Basic access is sufficient for the Keyword Planner API.
+
+3. A **Google Ads account with billing configured** -- the Keyword Planner API requires an account with an active payment method. You do not need to run any ads or spend money; you just need a payment method on file. This can be your manager account itself (if it has billing) or a separate sub-account.
+
+   > **Note on `GOOGLE_ADS_LOGIN_CUSTOMER_ID`:** If the account you use for `GOOGLE_ADS_CUSTOMER_ID` is a sub-account managed through your manager account, set `GOOGLE_ADS_LOGIN_CUSTOMER_ID` to your manager account ID. If you are calling the account directly (i.e., the OAuth user has direct access to it without going through a manager), you can omit `GOOGLE_ADS_LOGIN_CUSTOMER_ID`.
+
 4. A **Google Cloud project** with the [Google Ads API](https://console.cloud.google.com/apis/library/googleads.googleapis.com) enabled.
 5. An **OAuth2 client ID and secret** from your GCP project (Desktop app type -- see GCP setup below).
-6. An **OAuth2 refresh token** obtained via a one-time authorization flow (see below).
-7. A **Google Ads customer ID** -- use your **sub-account's** customer ID (the account with billing, not the manager account). The manager account ID goes in a separate `GOOGLE_ADS_LOGIN_CUSTOMER_ID` credential (see Configuration Reference below).
+6. An **OAuth2 refresh token** obtained via a one-time authorization flow (see below). The OAuth2 flow must be completed as the Google account that has access to the Google Ads account you intend to use.
+7. A **Google Ads customer ID** -- the ID of the account with billing (found in the top-right corner of the Google Ads UI). Dashes are optional: `123-456-7890` and `1234567890` both work.
 
 ### 2. GCP Setup
 
@@ -171,20 +178,26 @@ Download the latest binary for your platform from the [Releases page](https://gi
 
 ## Important: Manager Account + Sub-Account Setup
 
-The Google Ads Keyword Planner API requires **two customer IDs**:
+The `GOOGLE_ADS_LOGIN_CUSTOMER_ID` credential is the manager/MCC account ID. It is required **only when your `GOOGLE_ADS_CUSTOMER_ID` account is a sub-account managed through a manager account** -- it tells the API which manager to authenticate through by sending it as the `login-customer-id` HTTP header.
 
-- **`GOOGLE_ADS_CUSTOMER_ID`** -- your sub-account (the account with billing configured). This is the account the API operates on behalf of.
-- **`GOOGLE_ADS_LOGIN_CUSTOMER_ID`** -- your manager/MCC account (where the developer token lives). This is sent as the `login-customer-id` HTTP header.
+If the account you set as `GOOGLE_ADS_CUSTOMER_ID` is directly accessible by your OAuth credentials (i.e., you can see it in `listAccessibleCustomers` and it is not being accessed through a manager), you can omit `GOOGLE_ADS_LOGIN_CUSTOMER_ID`.
 
-Without `GOOGLE_ADS_LOGIN_CUSTOMER_ID`, API calls return `INVALID_ARGUMENT` even with a valid developer token, because the API can't resolve which manager account to authenticate through.
+When in doubt: set it to your manager account ID. It doesn't hurt to include it even when not strictly required.
 
-Both IDs can be found in the Google Ads UI (top-right corner when viewing that account). Dashes are optional -- `123-456-7890` and `1234567890` both work.
+Both IDs can be found in the Google Ads UI -- the account number shown in the top-right corner when viewing that account. Dashes are optional -- `123-456-7890` and `1234567890` both work.
 
 ## Important: Billing Requirement
 
-The Google Ads Keyword Planner API **requires a Google Ads account with billing configured**. This is a Google requirement -- accounts without an active payment method return HTTP 400 errors regardless of credentials.
+The Google Ads Keyword Planner API **requires an account with billing configured**. Accounts without an active payment method return errors regardless of credentials. You do not need to run any ads or spend money -- you just need a payment method on file.
 
-You do not need to run any ads or spend money. You just need a payment method added to your Google Ads account. A manager account (MCC) alone is not enough -- you need at least one linked sub-account with billing set up.
+## Common Errors
+
+| Error | Meaning | Fix |
+|-------|---------|-----|
+| `DEVELOPER_TOKEN_NOT_APPROVED` | Your developer token is in test mode and cannot access real accounts | Apply for Basic access at `https://ads.google.com/aw/apicenter` and wait for Google approval (a few days) |
+| `USER_PERMISSION_DENIED` with mention of `login-customer-id` | The account is a managed sub-account but `GOOGLE_ADS_LOGIN_CUSTOMER_ID` is missing or wrong | Set `GOOGLE_ADS_LOGIN_CUSTOMER_ID` to your manager account ID |
+| `USER_PERMISSION_DENIED` without mention of `login-customer-id` | The OAuth user doesn't have access to the customer account | Complete the OAuth flow as the Google account that owns or has access to the ads account |
+| HTTP 400 `INVALID_ARGUMENT` | Often a malformed customer ID or missing required field | Check that `GOOGLE_ADS_CUSTOMER_ID` contains only digits (dashes are stripped automatically) |
 
 ---
 
@@ -201,7 +214,7 @@ Credentials are resolved in this priority order: **CLI flag > environment variab
 | Customer ID | `--customer-id` | `GOOGLE_ADS_CUSTOMER_ID` | Yes | Sub-account ID with billing (not the manager account) |
 | Login customer ID | `--login-customer-id` | `GOOGLE_ADS_LOGIN_CUSTOMER_ID` | Yes* | Manager/MCC account ID. Required when using a sub-account. |
 
-> \* Technically optional if your developer token is on the same account as `GOOGLE_ADS_CUSTOMER_ID`, but in practice the manager-account setup always requires this.
+> \* Required when `GOOGLE_ADS_CUSTOMER_ID` is a managed sub-account (accessed through a manager/MCC account). Can be omitted if your OAuth credentials have direct access to the customer account.
 
 ### `.env` File
 
