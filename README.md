@@ -26,8 +26,8 @@ Available as a statically-linked Go binary **or** a C# Native AOT binary -- no r
 You need:
 
 1. A **Google Ads manager account (MCC)** -- the developer token is only available on manager accounts, not regular accounts. Create one free at [ads.google.com/home/tools/manager-accounts](https://ads.google.com/home/tools/manager-accounts/) if you don't have one.
-2. A **Google Ads developer token** -- in your manager account, go to `https://ads.google.com/aw/apicenter` and copy your developer token.
-3. A **Google Ads account with billing configured** -- the Keyword Planner API requires an account with an active payment method set up. A manager account alone is not sufficient; you need at least one linked sub-account with billing. Without billing, API calls return HTTP 400 errors.
+2. A **Google Ads developer token with Basic or Standard access** -- in your manager account, go to `https://ads.google.com/aw/apicenter` and copy your developer token. **Important:** A new developer token starts in test mode and can only call the API against [test accounts](https://developers.google.com/google-ads/api/docs/best-practices/test-accounts). To call the Keyword Planner API against real accounts, you must apply for Basic or Standard access at the API Center. Google reviews these requests -- it typically takes a few days. Until then, every API call to a real account returns `DEVELOPER_TOKEN_NOT_APPROVED`.
+3. A **Google Ads sub-account linked to your manager account** with billing configured -- the Keyword Planner API requires an account with an active payment method. Create a sub-account from the manager dashboard, add a payment method, and confirm it appears as a client account under your manager. **The sub-account must be linked to your manager account** -- if it's not, API calls return `USER_PERMISSION_DENIED`.
 4. A **Google Cloud project** with the [Google Ads API](https://console.cloud.google.com/apis/library/googleads.googleapis.com) enabled.
 5. An **OAuth2 client ID and secret** from your GCP project (Desktop app type -- see GCP setup below).
 6. An **OAuth2 refresh token** obtained via a one-time authorization flow (see below).
