@@ -1,0 +1,35 @@
+# Go
+go/vendor/
+go/*.exe
+go/*.exe~
+go/*.dll
+go/*.so
+go/*.dylib
+go/*.test
+go/*.out
+go/bin/
+
+# C#
+csharp/**/bin/
+csharp/**/obj/
+csharp/**/*.user
+csharp/.vs/
+csharp/**/.vs/
+*.binlog
+
+# Build artifacts
+dist/
+publish/
+
+# Environment
+.env
+
+# Editor
+.vscode/
+*.swp
+*.swo
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

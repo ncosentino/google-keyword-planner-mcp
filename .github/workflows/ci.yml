@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  go:
+    name: Go lint and test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: go
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.sum
+
+      - name: go mod tidy check
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          working-directory: go
+          install-mode: goinstall
+
+      - name: go test
+        run: go test ./...
+
+  csharp:
+    name: C# build and test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: csharp
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        run: dotnet restore KeywordPlannerMcp.slnx
+
+      - name: Build
+        run: dotnet build KeywordPlannerMcp.slnx --no-restore -c Release
+
+      - name: Test
+        run: dotnet test KeywordPlannerMcp.slnx --no-build -c Release --logger "console;verbosity=minimal"

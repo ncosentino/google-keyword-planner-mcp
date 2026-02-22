@@ -1,0 +1,147 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  go:
+    name: Go -- ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            artifact: kwp-mcp-go-linux-amd64
+          - goos: linux
+            goarch: arm64
+            artifact: kwp-mcp-go-linux-arm64
+          - goos: darwin
+            goarch: amd64
+            artifact: kwp-mcp-go-darwin-amd64
+          - goos: darwin
+            goarch: arm64
+            artifact: kwp-mcp-go-darwin-arm64
+          - goos: windows
+            goarch: amd64
+            artifact: kwp-mcp-go-windows-amd64.exe
+          - goos: windows
+            goarch: arm64
+            artifact: kwp-mcp-go-windows-arm64.exe
+
+    defaults:
+      run:
+        working-directory: go
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.sum
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" -trimpath -o "${{ matrix.artifact }}" .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: go/${{ matrix.artifact }}
+
+  csharp:
+    name: C# -- ${{ matrix.rid }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - rid: linux-x64
+            runner: ubuntu-latest
+            artifact: kwp-mcp-csharp-linux-x64
+          - rid: linux-arm64
+            runner: ubuntu-24.04-arm
+            artifact: kwp-mcp-csharp-linux-arm64
+          - rid: osx-x64
+            runner: macos-latest
+            artifact: kwp-mcp-csharp-osx-x64
+          - rid: osx-arm64
+            runner: macos-latest
+            artifact: kwp-mcp-csharp-osx-arm64
+          - rid: win-x64
+            runner: windows-latest
+            artifact: kwp-mcp-csharp-win-x64.exe
+          - rid: win-arm64
+            runner: windows-latest
+            artifact: kwp-mcp-csharp-win-arm64.exe
+
+    defaults:
+      run:
+        working-directory: csharp
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Publish Native AOT (${{ matrix.rid }})
+        run: |
+          dotnet publish src/KeywordPlannerMcp/KeywordPlannerMcp.csproj \
+            -r ${{ matrix.rid }} \
+            -c Release \
+            --self-contained true \
+            -o ./publish/${{ matrix.rid }}
+        shell: bash
+
+      - name: Rename binary (Linux/macOS)
+        if: ${{ !startsWith(matrix.rid, 'win') }}
+        run: mv ./publish/${{ matrix.rid }}/kwp-mcp-csharp ./publish/${{ matrix.rid }}/${{ matrix.artifact }}
+        shell: bash
+
+      - name: Rename binary (Windows)
+        if: ${{ startsWith(matrix.rid, 'win') }}
+        run: mv ./publish/${{ matrix.rid }}/kwp-mcp-csharp.exe ./publish/${{ matrix.rid }}/${{ matrix.artifact }}
+        shell: bash
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: csharp/publish/${{ matrix.rid }}/${{ matrix.artifact }}
+
+  release:
+    name: Create GitHub Release
+    needs: [go, csharp]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+          files: dist/*

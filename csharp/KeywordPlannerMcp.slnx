@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="src/KeywordPlannerMcp/KeywordPlannerMcp.csproj" />
+  <Project Path="tests/KeywordPlannerMcp.Tests/KeywordPlannerMcp.Tests.csproj" />
+</Solution>
