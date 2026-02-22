@@ -1,11 +1,27 @@
-# google-keyword-planner-mcp
+# Google Ads Keyword Planner MCP Server -- Keyword Research for AI Assistants
 
-[![CI](https://github.com/ncosentino/google-keyword-planner-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/ncosentino/google-keyword-planner-mcp/actions/workflows/ci.yml)
-[![Release](https://github.com/ncosentino/google-keyword-planner-mcp/actions/workflows/release.yml/badge.svg)](https://github.com/ncosentino/google-keyword-planner-mcp/releases/latest)
+[![Latest Release](https://img.shields.io/github/v/release/ncosentino/google-keyword-planner-mcp?style=flat-square)](https://github.com/ncosentino/google-keyword-planner-mcp/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=flat-square)](LICENSE)
+[![Go Version](https://img.shields.io/badge/Go-1.26-00ADD8?style=flat-square&logo=go)](go/go.mod)
+[![.NET Version](https://img.shields.io/badge/.NET-10-512BD4?style=flat-square&logo=dotnet)](csharp/Directory.Build.props)
+[![CI](https://img.shields.io/github/actions/workflow/status/ncosentino/google-keyword-planner-mcp/ci.yml?label=CI&style=flat-square)](https://github.com/ncosentino/google-keyword-planner-mcp/actions/workflows/ci.yml)
 
-A zero-dependency native MCP server for the [Google Ads Keyword Planner API](https://developers.google.com/google-ads/api/docs/keyword-planning/overview).
+> **Zero-dependency MCP server for Google Ads Keyword Planner.**
+> Pre-built native binaries for Linux, macOS, and Windows. No Node.js. No Python. No .NET runtime. No Go toolchain. Download one binary and configure your AI tool.
 
-Available as a statically-linked Go binary **or** a C# Native AOT binary -- no runtime, no Docker, no Node.js.
+Expose Google Ads Keyword Planner data directly to AI assistants like Claude, GitHub Copilot, and Cursor via the [Model Context Protocol (MCP)](https://modelcontextprotocol.io). Ask your AI to find keyword opportunities, analyze search volume trends, and forecast ad performance -- all grounded in real Google keyword data.
+
+---
+
+## Why This Exists
+
+AI assistants are powerful at SEO and content strategy -- but they need real keyword data. This MCP server bridges your AI tool to the Google Ads Keyword Planner API, giving it:
+
+- **Keyword ideas** -- related keywords with average monthly searches, competition level, and CPC estimates from a seed keyword or URL
+- **Historical metrics** -- search volume trends, competition scores, and bid ranges for any list of keywords
+- **Forecasts** -- projected impressions, clicks, and cost for a set of keywords at a given max CPC bid
+
+With this MCP server configured, you can ask your AI: _"What keywords should I target for a blog post about dependency injection in C#? What's the search volume and competition look like?"_ and get a real data-backed answer.
 
 ---
 
