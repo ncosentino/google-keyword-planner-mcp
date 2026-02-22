@@ -334,9 +334,23 @@ Replace `linux-x64` with your target RID (`win-x64`, `osx-arm64`, etc.).
 
 ## About
 
-Built to give AI assistants direct access to Google's keyword database for content strategy, SEO gap analysis, and search volume research.
+### Nick Cosentino -- Dev Leader
 
-Part of the [Nexus Labs](https://github.com/ncosentino) native MCP server collection -- zero dependencies, single binary downloads.
+This MCP server was built by **[Nick Cosentino](https://www.devleader.ca)**, a software engineer and content creator known as **Dev Leader**. Nick creates practical .NET, C#, ASP.NET Core, Blazor, and software engineering content for intermediate to advanced developers -- covering everything from performance optimization and clean architecture to real-world career advice.
+
+This tool was born out of real work researching keywords and planning SEO strategy for [devleader.ca](https://www.devleader.ca) and the desire to use AI assistants effectively during that process. It serves as a practical example of building Native AOT C# and idiomatic Go MCP servers with zero runtime dependencies.
+
+**Find Nick online:**
+
+- Blog: [https://www.devleader.ca](https://www.devleader.ca)
+- YouTube: [https://www.youtube.com/@devleaderca](https://www.youtube.com/@devleaderca)
+- Newsletter: [https://weekly.devleader.ca](https://weekly.devleader.ca)
+- LinkedIn: [https://linkedin.com/in/nickcosentino](https://linkedin.com/in/nickcosentino)
+- Linktree: [https://www.linktr.ee/devleader](https://www.linktr.ee/devleader)
+
+### BrandGhost
+
+[BrandGhost](https://www.brandghost.ai) is a social media automation platform built by Nick that lets content creators cross-post and schedule content across all social platforms in one click. If you create content and want to spend less time on distribution and more time creating, check it out.
 
 ---
 
