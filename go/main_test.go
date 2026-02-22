@@ -17,7 +17,7 @@ func TestNewServer_RegistersTools(_ *testing.T) {
 		Version: "test",
 	}, nil)
 
-	client := keywordplanner.NewClient("token", "id", "secret", "refresh", "123")
+	client := keywordplanner.NewClient("token", "id", "secret", "refresh", "123", "")
 
 	mcp.AddTool(srv,
 		&mcp.Tool{Name: "generate_keyword_ideas", Description: "test"},

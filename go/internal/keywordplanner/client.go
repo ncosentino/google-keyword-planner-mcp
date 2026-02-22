@@ -17,21 +17,29 @@ import (
 
 const (
 	tokenURL    = "https://oauth2.googleapis.com/token"
-	adsAPIBase  = "https://googleads.googleapis.com/v19"
-	adsAPIVersion = "v19"
+	adsAPIBase  = "https://googleads.googleapis.com/v23"
+	adsAPIVersion = "v23"
 	httpTimeout = 30 * time.Second
 )
 
 // Client calls the Google Ads Keyword Planner API.
 type Client struct {
-	httpClient     *http.Client
-	developerToken string
-	customerID     string
-	tokenSource    oauth2.TokenSource
+	httpClient      *http.Client
+	developerToken  string
+	customerID      string
+	loginCustomerID string
+	baseURL         string
+	tokenSource     oauth2.TokenSource
 }
 
 // NewClient creates a Client with the provided OAuth2 credentials.
-func NewClient(developerToken, clientID, clientSecret, refreshToken, customerID string) *Client {
+// loginCustomerID is the manager/MCC account ID; set it when customerID is a sub-account.
+func NewClient(developerToken, clientID, clientSecret, refreshToken, customerID, loginCustomerID string) *Client {
+	return NewClientWithBaseURL(developerToken, clientID, clientSecret, refreshToken, customerID, loginCustomerID, adsAPIBase)
+}
+
+// NewClientWithBaseURL creates a Client with a custom API base URL. Intended for testing.
+func NewClientWithBaseURL(developerToken, clientID, clientSecret, refreshToken, customerID, loginCustomerID, baseURL string) *Client {
 	conf := &oauth2.Config{
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
@@ -44,11 +52,30 @@ func NewClient(developerToken, clientID, clientSecret, refreshToken, customerID 
 	base.Timeout = httpTimeout
 
 	return &Client{
-		httpClient:     base,
-		developerToken: developerToken,
-		customerID:     customerID,
-		tokenSource:    ts,
+		httpClient:      base,
+		developerToken:  developerToken,
+		customerID:      customerID,
+		loginCustomerID: loginCustomerID,
+		baseURL:         baseURL,
+		tokenSource:     ts,
 	}
+}
+
+// newTestClient creates a Client that uses a plain http.Client (no OAuth2) for unit tests.
+func newTestClient(developerToken, customerID, loginCustomerID, baseURL string, httpClient *http.Client) *Client {
+	return &Client{
+		httpClient:      httpClient,
+		developerToken:  developerToken,
+		customerID:      customerID,
+		loginCustomerID: loginCustomerID,
+		baseURL:         baseURL,
+	}
+}
+
+// NewTestClient is exported solely for use in package-level tests.
+// Do not use in production code.
+func NewTestClient(developerToken, customerID, loginCustomerID, baseURL string, httpClient *http.Client) *Client {
+	return newTestClient(developerToken, customerID, loginCustomerID, baseURL, httpClient)
 }
 
 // GenerateKeywordIdeas returns keyword ideas for the given seed keywords and/or URL.
@@ -59,7 +86,7 @@ func (c *Client) GenerateKeywordIdeas(
 	language string,
 ) (*KeywordIdeasResponse, error) {
 	reqBody := c.buildKeywordIdeasRequest(seedKeywords, seedURL, language)
-	endpoint := fmt.Sprintf("%s/customers/%s:generateKeywordIdeas", adsAPIBase, c.customerID)
+	endpoint := fmt.Sprintf("%s/customers/%s:generateKeywordIdeas", c.baseURL, c.customerID)
 
 	var raw generateKeywordIdeasResponse
 	if err := c.post(ctx, endpoint, reqBody, &raw); err != nil {
@@ -91,7 +118,7 @@ func (c *Client) GetHistoricalMetrics(
 	keywords []string,
 ) (*HistoricalMetricsResponse, error) {
 	reqBody := generateHistoricalMetricsRequest{Keywords: keywords}
-	endpoint := fmt.Sprintf("%s/customers/%s:generateKeywordHistoricalMetrics", adsAPIBase, c.customerID)
+	endpoint := fmt.Sprintf("%s/customers/%s:generateKeywordHistoricalMetrics", c.baseURL, c.customerID)
 
 	var raw generateHistoricalMetricsResponse
 	if err := c.post(ctx, endpoint, reqBody, &raw); err != nil {
@@ -156,7 +183,7 @@ func (c *Client) GetKeywordForecast(
 		},
 	}
 
-	endpoint := fmt.Sprintf("%s/customers/%s:generateKeywordForecastMetrics", adsAPIBase, c.customerID)
+	endpoint := fmt.Sprintf("%s/customers/%s:generateKeywordForecastMetrics", c.baseURL, c.customerID)
 
 	var raw generateForecastMetricsResponse
 	if err := c.post(ctx, endpoint, reqBody, &raw); err != nil {
@@ -195,6 +222,9 @@ func (c *Client) post(ctx context.Context, endpoint string, body, out any) error
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("developer-token", c.developerToken)
+	if c.loginCustomerID != "" {
+		req.Header.Set("login-customer-id", c.loginCustomerID)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -209,7 +239,7 @@ func (c *Client) post(ctx context.Context, endpoint string, body, out any) error
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("Google Ads API returned HTTP %d: %s",
-			resp.StatusCode, truncate(string(respBody), 300))
+			resp.StatusCode, string(respBody))
 	}
 
 	if err := json.Unmarshal(respBody, out); err != nil {
@@ -252,9 +282,4 @@ func parseMonthEnum(month string) int32 {
 	return 0
 }
 
-func truncate(s string, max int) string {
-	if len(s) <= max {
-		return s
-	}
-	return s[:max] + "..."
-}
+

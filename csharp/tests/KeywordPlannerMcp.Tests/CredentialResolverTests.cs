@@ -52,4 +52,19 @@ public sealed class CredentialResolverTests
         var result = CredentialResolver.NormalizeCustomerId(input);
         Assert.Equal(expected, result);
     }
+
+    [Fact]
+    public void ResolveCredential_LoginCustomerIdEnvVar_IsResolved()
+    {
+        Environment.SetEnvironmentVariable(CredentialResolver.EnvLoginCustomerId, "1381404200");
+        try
+        {
+            var result = CredentialResolver.ResolveCredential(null, CredentialResolver.EnvLoginCustomerId);
+            Assert.Equal("1381404200", result);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(CredentialResolver.EnvLoginCustomerId, null);
+        }
+    }
 }

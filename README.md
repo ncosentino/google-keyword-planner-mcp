@@ -31,7 +31,7 @@ You need:
 4. A **Google Cloud project** with the [Google Ads API](https://console.cloud.google.com/apis/library/googleads.googleapis.com) enabled.
 5. An **OAuth2 client ID and secret** from your GCP project (Desktop app type -- see GCP setup below).
 6. An **OAuth2 refresh token** obtained via a one-time authorization flow (see below).
-7. A **Google Ads customer ID** -- use your manager account's customer ID (shown top-right in the Google Ads UI, format: `123-456-7890`).
+7. A **Google Ads customer ID** -- use your **sub-account's** customer ID (the account with billing, not the manager account). The manager account ID goes in a separate `GOOGLE_ADS_LOGIN_CUSTOMER_ID` credential (see Configuration Reference below).
 
 ### 2. GCP Setup
 
@@ -139,7 +139,8 @@ Download the latest binary for your platform from the [Releases page](https://gi
         "GOOGLE_ADS_CLIENT_ID": "your-client-id.apps.googleusercontent.com",
         "GOOGLE_ADS_CLIENT_SECRET": "your-client-secret",
         "GOOGLE_ADS_REFRESH_TOKEN": "your-refresh-token",
-        "GOOGLE_ADS_CUSTOMER_ID": "123-456-7890"
+        "GOOGLE_ADS_CUSTOMER_ID": "your-sub-account-id",
+        "GOOGLE_ADS_LOGIN_CUSTOMER_ID": "your-manager-account-id"
       }
     }
   }
@@ -160,12 +161,24 @@ Download the latest binary for your platform from the [Releases page](https://gi
         "GOOGLE_ADS_CLIENT_ID": "your-client-id.apps.googleusercontent.com",
         "GOOGLE_ADS_CLIENT_SECRET": "your-client-secret",
         "GOOGLE_ADS_REFRESH_TOKEN": "your-refresh-token",
-        "GOOGLE_ADS_CUSTOMER_ID": "123-456-7890"
+        "GOOGLE_ADS_CUSTOMER_ID": "your-sub-account-id",
+        "GOOGLE_ADS_LOGIN_CUSTOMER_ID": "your-manager-account-id"
       }
     }
   }
 }
 ```
+
+## Important: Manager Account + Sub-Account Setup
+
+The Google Ads Keyword Planner API requires **two customer IDs**:
+
+- **`GOOGLE_ADS_CUSTOMER_ID`** -- your sub-account (the account with billing configured). This is the account the API operates on behalf of.
+- **`GOOGLE_ADS_LOGIN_CUSTOMER_ID`** -- your manager/MCC account (where the developer token lives). This is sent as the `login-customer-id` HTTP header.
+
+Without `GOOGLE_ADS_LOGIN_CUSTOMER_ID`, API calls return `INVALID_ARGUMENT` even with a valid developer token, because the API can't resolve which manager account to authenticate through.
+
+Both IDs can be found in the Google Ads UI (top-right corner when viewing that account). Dashes are optional -- `123-456-7890` and `1234567890` both work.
 
 ## Important: Billing Requirement
 
@@ -179,13 +192,16 @@ You do not need to run any ads or spend money. You just need a payment method ad
 
 Credentials are resolved in this priority order: **CLI flag > environment variable > `.env` file**.
 
-| Credential | CLI flag | Environment variable | Description |
-|------------|----------|---------------------|-------------|
-| Developer token | `--developer-token` | `GOOGLE_ADS_DEVELOPER_TOKEN` | From Google Ads API Center |
-| OAuth2 client ID | `--client-id` | `GOOGLE_ADS_CLIENT_ID` | From GCP OAuth2 credentials |
-| OAuth2 client secret | `--client-secret` | `GOOGLE_ADS_CLIENT_SECRET` | From GCP OAuth2 credentials |
-| Refresh token | `--refresh-token` | `GOOGLE_ADS_REFRESH_TOKEN` | From one-time OAuth2 flow |
-| Customer ID | `--customer-id` | `GOOGLE_ADS_CUSTOMER_ID` | Google Ads account ID |
+| Credential | CLI flag | Environment variable | Required | Description |
+|------------|----------|---------------------|----------|-------------|
+| Developer token | `--developer-token` | `GOOGLE_ADS_DEVELOPER_TOKEN` | Yes | From Google Ads API Center (manager account) |
+| OAuth2 client ID | `--client-id` | `GOOGLE_ADS_CLIENT_ID` | Yes | From GCP OAuth2 credentials |
+| OAuth2 client secret | `--client-secret` | `GOOGLE_ADS_CLIENT_SECRET` | Yes | From GCP OAuth2 credentials |
+| Refresh token | `--refresh-token` | `GOOGLE_ADS_REFRESH_TOKEN` | Yes | From one-time OAuth2 flow |
+| Customer ID | `--customer-id` | `GOOGLE_ADS_CUSTOMER_ID` | Yes | Sub-account ID with billing (not the manager account) |
+| Login customer ID | `--login-customer-id` | `GOOGLE_ADS_LOGIN_CUSTOMER_ID` | Yes* | Manager/MCC account ID. Required when using a sub-account. |
+
+> \* Technically optional if your developer token is on the same account as `GOOGLE_ADS_CUSTOMER_ID`, but in practice the manager-account setup always requires this.
 
 ### `.env` File
 
@@ -196,7 +212,8 @@ GOOGLE_ADS_DEVELOPER_TOKEN=your-developer-token
 GOOGLE_ADS_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GOOGLE_ADS_CLIENT_SECRET=your-client-secret
 GOOGLE_ADS_REFRESH_TOKEN=your-refresh-token
-GOOGLE_ADS_CUSTOMER_ID=123-456-7890
+GOOGLE_ADS_CUSTOMER_ID=your-sub-account-id
+GOOGLE_ADS_LOGIN_CUSTOMER_ID=your-manager-account-id
 ```
 
 ---

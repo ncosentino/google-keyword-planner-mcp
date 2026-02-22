@@ -6,10 +6,11 @@ namespace KeywordPlannerMcp.KeywordPlanner;
 internal sealed class KeywordPlannerClient(
     string developerToken,
     string customerId,
+    string? loginCustomerId,
     OAuth2TokenProvider tokenProvider,
     HttpClient httpClient)
 {
-    private readonly string _baseUrl = $"https://googleads.googleapis.com/v19/customers/{customerId}";
+    private readonly string _baseUrl = $"https://googleads.googleapis.com/v23/customers/{customerId}";
 
     /// <summary>Generates keyword ideas from seed keywords and/or a URL.</summary>
     internal async Task<KeywordIdeasResponse> GenerateKeywordIdeasAsync(
@@ -24,7 +25,7 @@ internal sealed class KeywordPlannerClient(
         using var httpRequest = new HttpRequestMessage(
             HttpMethod.Post, $"{_baseUrl}:generateKeywordIdeas");
         await tokenProvider.AuthorizeAsync(httpRequest, cancellationToken);
-        httpRequest.Headers.Add("developer-token", developerToken);
+        AddAuthHeaders(httpRequest);
         httpRequest.Content = OAuth2TokenProvider.JsonContent(json);
 
         using var response = await httpClient.SendAsync(httpRequest, cancellationToken);
@@ -58,7 +59,7 @@ internal sealed class KeywordPlannerClient(
         using var httpRequest = new HttpRequestMessage(
             HttpMethod.Post, $"{_baseUrl}:generateKeywordHistoricalMetrics");
         await tokenProvider.AuthorizeAsync(httpRequest, cancellationToken);
-        httpRequest.Headers.Add("developer-token", developerToken);
+        AddAuthHeaders(httpRequest);
         httpRequest.Content = OAuth2TokenProvider.JsonContent(json);
 
         using var response = await httpClient.SendAsync(httpRequest, cancellationToken);
@@ -103,7 +104,7 @@ internal sealed class KeywordPlannerClient(
         using var httpRequest = new HttpRequestMessage(
             HttpMethod.Post, $"{_baseUrl}:generateKeywordForecastMetrics");
         await tokenProvider.AuthorizeAsync(httpRequest, cancellationToken);
-        httpRequest.Headers.Add("developer-token", developerToken);
+        AddAuthHeaders(httpRequest);
         httpRequest.Content = OAuth2TokenProvider.JsonContent(json);
 
         using var response = await httpClient.SendAsync(httpRequest, cancellationToken);
@@ -196,6 +197,13 @@ internal sealed class KeywordPlannerClient(
 
     private static long ParseLong(string? value) =>
         long.TryParse(value, out var n) ? n : 0L;
+
+    private void AddAuthHeaders(HttpRequestMessage request)
+    {
+        request.Headers.Add("developer-token", developerToken);
+        if (!string.IsNullOrWhiteSpace(loginCustomerId))
+            request.Headers.Add("login-customer-id", loginCustomerId);
+    }
 
     private static string NormalizeCompetition(string raw) =>
         raw switch

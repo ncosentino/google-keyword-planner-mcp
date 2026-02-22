@@ -27,6 +27,11 @@ string? customerId = CredentialResolver.NormalizeCustomerId(
         args.SkipWhile(a => a != "--customer-id").Skip(1).FirstOrDefault(),
         CredentialResolver.EnvCustomerId));
 
+string? loginCustomerId = CredentialResolver.NormalizeCustomerId(
+    CredentialResolver.ResolveCredential(
+        args.SkipWhile(a => a != "--login-customer-id").Skip(1).FirstOrDefault(),
+        CredentialResolver.EnvLoginCustomerId));
+
 if (string.IsNullOrWhiteSpace(developerToken) ||
     string.IsNullOrWhiteSpace(clientId) ||
     string.IsNullOrWhiteSpace(clientSecret) ||
@@ -71,7 +76,7 @@ builder.Services.AddTransient<KeywordPlannerClient>(sp =>
     var factory = sp.GetRequiredService<IHttpClientFactory>();
     var tokenProvider = sp.GetRequiredService<OAuth2TokenProvider>();
     return new KeywordPlannerClient(
-        developerToken, customerId, tokenProvider,
+        developerToken, customerId, loginCustomerId, tokenProvider,
         factory.CreateClient(nameof(KeywordPlannerClient)));
 });
 

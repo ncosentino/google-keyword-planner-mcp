@@ -7,6 +7,10 @@
 //   - OAuth2 client secret: GOOGLE_ADS_CLIENT_SECRET
 //   - OAuth2 refresh token: GOOGLE_ADS_REFRESH_TOKEN
 //   - Google Ads customer ID: GOOGLE_ADS_CUSTOMER_ID
+//
+// Optional credentials:
+//   - Login customer ID: GOOGLE_ADS_LOGIN_CUSTOMER_ID (manager account ID; required when
+//     GOOGLE_ADS_CUSTOMER_ID is a sub-account accessed through a manager/MCC account)
 package config
 
 import (
@@ -17,12 +21,13 @@ import (
 )
 
 const (
-	envDeveloperToken = "GOOGLE_ADS_DEVELOPER_TOKEN"
-	envClientID       = "GOOGLE_ADS_CLIENT_ID"
-	envClientSecret   = "GOOGLE_ADS_CLIENT_SECRET"
-	envRefreshToken   = "GOOGLE_ADS_REFRESH_TOKEN"
-	envCustomerID     = "GOOGLE_ADS_CUSTOMER_ID"
-	dotEnvFile        = ".env"
+	envDeveloperToken  = "GOOGLE_ADS_DEVELOPER_TOKEN"
+	envClientID        = "GOOGLE_ADS_CLIENT_ID"
+	envClientSecret    = "GOOGLE_ADS_CLIENT_SECRET"
+	envRefreshToken    = "GOOGLE_ADS_REFRESH_TOKEN"
+	envCustomerID      = "GOOGLE_ADS_CUSTOMER_ID"
+	envLoginCustomerID = "GOOGLE_ADS_LOGIN_CUSTOMER_ID"
+	dotEnvFile         = ".env"
 )
 
 // Config holds resolved Google Ads API credentials.
@@ -37,15 +42,19 @@ type Config struct {
 	RefreshToken string
 	// CustomerID is the Google Ads customer account ID (digits only, e.g. "1234567890").
 	CustomerID string
+	// LoginCustomerID is the manager/MCC account ID used as the login-customer-id header.
+	// Required when CustomerID is a sub-account accessed through a manager account.
+	LoginCustomerID string
 }
 
 // Flags holds values parsed from CLI flags.
 type Flags struct {
-	DeveloperToken string
-	ClientID       string
-	ClientSecret   string
-	RefreshToken   string
-	CustomerID     string
+	DeveloperToken  string
+	ClientID        string
+	ClientSecret    string
+	RefreshToken    string
+	CustomerID      string
+	LoginCustomerID string
 }
 
 // IsComplete returns true when all required fields are populated.
@@ -60,11 +69,12 @@ func Resolve(flags Flags) Config {
 	dotenv := parseDotEnv()
 
 	return Config{
-		DeveloperToken: resolve("developer token", flags.DeveloperToken, envDeveloperToken, dotenv),
-		ClientID:       resolve("client ID", flags.ClientID, envClientID, dotenv),
-		ClientSecret:   resolve("client secret", flags.ClientSecret, envClientSecret, dotenv),
-		RefreshToken:   resolve("refresh token", flags.RefreshToken, envRefreshToken, dotenv),
-		CustomerID:     normalizeCustomerID(resolve("customer ID", flags.CustomerID, envCustomerID, dotenv)),
+		DeveloperToken:  resolve("developer token", flags.DeveloperToken, envDeveloperToken, dotenv),
+		ClientID:        resolve("client ID", flags.ClientID, envClientID, dotenv),
+		ClientSecret:    resolve("client secret", flags.ClientSecret, envClientSecret, dotenv),
+		RefreshToken:    resolve("refresh token", flags.RefreshToken, envRefreshToken, dotenv),
+		CustomerID:      normalizeCustomerID(resolve("customer ID", flags.CustomerID, envCustomerID, dotenv)),
+		LoginCustomerID: normalizeCustomerID(resolve("login customer ID", flags.LoginCustomerID, envLoginCustomerID, dotenv)),
 	}
 }
 

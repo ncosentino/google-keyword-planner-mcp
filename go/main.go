@@ -30,6 +30,7 @@ func main() {
 	clientSecret := flag.String("client-secret", "", "OAuth2 client secret")
 	refreshToken := flag.String("refresh-token", "", "OAuth2 refresh token")
 	customerID := flag.String("customer-id", "", "Google Ads customer ID")
+	loginCustomerID := flag.String("login-customer-id", "", "Google Ads manager/MCC account ID (required when customer-id is a sub-account)")
 	flag.Parse()
 
 	// All diagnostic output must go to stderr to avoid corrupting the MCP STDIO stream.
@@ -37,11 +38,12 @@ func main() {
 	slog.SetDefault(logger)
 
 	cfg := config.Resolve(config.Flags{
-		DeveloperToken: *developerToken,
-		ClientID:       *clientID,
-		ClientSecret:   *clientSecret,
-		RefreshToken:   *refreshToken,
-		CustomerID:     *customerID,
+		DeveloperToken:  *developerToken,
+		ClientID:        *clientID,
+		ClientSecret:    *clientSecret,
+		RefreshToken:    *refreshToken,
+		CustomerID:      *customerID,
+		LoginCustomerID: *loginCustomerID,
 	})
 
 	if !cfg.IsComplete() {
@@ -52,7 +54,7 @@ func main() {
 	}
 
 	client := keywordplanner.NewClient(
-		cfg.DeveloperToken, cfg.ClientID, cfg.ClientSecret, cfg.RefreshToken, cfg.CustomerID,
+		cfg.DeveloperToken, cfg.ClientID, cfg.ClientSecret, cfg.RefreshToken, cfg.CustomerID, cfg.LoginCustomerID,
 	)
 
 	srv := mcp.NewServer(&mcp.Implementation{

@@ -14,6 +14,7 @@ internal static class CredentialResolver
     internal const string EnvClientSecret = "GOOGLE_ADS_CLIENT_SECRET";
     internal const string EnvRefreshToken = "GOOGLE_ADS_REFRESH_TOKEN";
     internal const string EnvCustomerId = "GOOGLE_ADS_CUSTOMER_ID";
+    internal const string EnvLoginCustomerId = "GOOGLE_ADS_LOGIN_CUSTOMER_ID";
     private const string DotEnvFile = ".env";
 
     internal static string? ResolveCredential(string? flagValue, string envVarName)
