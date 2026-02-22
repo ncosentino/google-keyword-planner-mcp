@@ -25,33 +25,92 @@ Available as a statically-linked Go binary **or** a C# Native AOT binary -- no r
 
 You need:
 
-1. A **Google Cloud project** with the Google Ads API enabled
-2. A **Google Ads developer token** -- apply at [Google Ads API Center](https://ads.google.com/intl/en_us/home/tools/keyword-planner/)
-3. An **OAuth2 client ID and secret** from your GCP project (Desktop app type)
-4. An **OAuth2 refresh token** obtained via a one-time authorization flow (see below)
-5. A **Google Ads customer ID** (your account ID, format: `123-456-7890`)
+1. A **Google Ads manager account (MCC)** -- the developer token is only available on manager accounts, not regular accounts. Create one free at [ads.google.com/home/tools/manager-accounts](https://ads.google.com/home/tools/manager-accounts/) if you don't have one.
+2. A **Google Ads developer token** -- in your manager account, go to `https://ads.google.com/aw/apicenter` and copy your developer token.
+3. A **Google Ads account with billing configured** -- the Keyword Planner API requires an account with an active payment method set up. A manager account alone is not sufficient; you need at least one linked sub-account with billing. Without billing, API calls return HTTP 400 errors.
+4. A **Google Cloud project** with the [Google Ads API](https://console.cloud.google.com/apis/library/googleads.googleapis.com) enabled.
+5. An **OAuth2 client ID and secret** from your GCP project (Desktop app type -- see GCP setup below).
+6. An **OAuth2 refresh token** obtained via a one-time authorization flow (see below).
+7. A **Google Ads customer ID** -- use your manager account's customer ID (shown top-right in the Google Ads UI, format: `123-456-7890`).
 
-### 2. Obtain a Refresh Token
+### 2. GCP Setup
 
-Run a one-time OAuth2 flow to get a refresh token:
+1. Go to [GCP Console → APIs & Services → Credentials](https://console.cloud.google.com/apis/credentials)
+2. Enable the **Google Ads API**: `https://console.cloud.google.com/apis/library/googleads.googleapis.com`
+3. Configure the OAuth consent screen (`https://console.cloud.google.com/apis/credentials/consent`):
+   - Select **External** → fill in app name and your email → **Save**
+   - Add your own Google account as a **Test user**
+   - Leave the app in **Testing** mode
+4. Create an OAuth2 client: **+ Create Credentials → OAuth client ID → Desktop app** → Create
+5. Copy the **Client ID** and **Client Secret**
 
-```bash
-# Exchange your authorization code for tokens
-# Step 1: Visit this URL in your browser (replace CLIENT_ID):
-https://accounts.google.com/o/oauth2/v2/auth?client_id=CLIENT_ID&redirect_uri=urn:ietf:wg:oauth:2.0:oob&response_type=code&scope=https://www.googleapis.com/auth/adwords&access_type=offline&prompt=consent
+### 3. Obtain a Refresh Token
 
-# Step 2: Exchange the code for tokens (replace CLIENT_ID, CLIENT_SECRET, CODE):
-curl -X POST https://oauth2.googleapis.com/token \
-  -d "client_id=CLIENT_ID" \
-  -d "client_secret=CLIENT_SECRET" \
-  -d "code=CODE" \
-  -d "grant_type=authorization_code" \
-  -d "redirect_uri=urn:ietf:wg:oauth:2.0:oob"
+Run this one-time flow to get a refresh token. It starts a local HTTP listener to automatically capture the authorization code:
+
+**PowerShell (Windows):**
+
+```powershell
+$clientId = "YOUR_CLIENT_ID"
+$clientSecret = "YOUR_CLIENT_SECRET"
+$redirectUri = "http://localhost:9876"
+$authUrl = "https://accounts.google.com/o/oauth2/v2/auth?client_id=$clientId&redirect_uri=$([Uri]::EscapeDataString($redirectUri))&response_type=code&scope=$([Uri]::EscapeDataString('https://www.googleapis.com/auth/adwords'))&access_type=offline&prompt=consent"
+
+$listener = [System.Net.HttpListener]::new()
+$listener.Prefixes.Add("$redirectUri/")
+$listener.Start()
+
+Start-Process $authUrl
+
+$context = $listener.GetContext()
+$rawUrl = $context.Request.RawUrl
+$responseText = "<html><body><h2>Auth complete! You can close this tab.</h2></body></html>"
+$buffer = [System.Text.Encoding]::UTF8.GetBytes($responseText)
+$context.Response.ContentLength64 = $buffer.Length
+$context.Response.OutputStream.Write($buffer, 0, $buffer.Length)
+$context.Response.Close()
+$listener.Stop()
+
+$code = ($rawUrl -split "[?&]" | Where-Object { $_ -like "code=*" }) -replace "^code=", ""
+
+$body = "client_id=$clientId&client_secret=$clientSecret&code=$([Uri]::EscapeDataString($code))&grant_type=authorization_code&redirect_uri=$([Uri]::EscapeDataString($redirectUri))"
+$result = Invoke-RestMethod -Method Post -Uri "https://oauth2.googleapis.com/token" -Body $body -ContentType "application/x-www-form-urlencoded"
+Write-Host "Refresh token: $($result.refresh_token)"
 ```
 
-The `refresh_token` field in the response is what you need.
+**bash (Linux/macOS):**
 
-### 3. Download the Binary
+```bash
+CLIENT_ID="YOUR_CLIENT_ID"
+CLIENT_SECRET="YOUR_CLIENT_SECRET"
+REDIRECT_URI="http://localhost:9876"
+
+# Open auth URL in browser
+open "https://accounts.google.com/o/oauth2/v2/auth?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&response_type=code&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fadwords&access_type=offline&prompt=consent"
+
+# Start a temporary HTTP server to catch the redirect
+CODE=$(python3 -c "
+import http.server, urllib.parse, sys
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        params = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        print(params['code'][0], end='')
+        self.send_response(200); self.end_headers()
+        self.wfile.write(b'Auth complete! Close this tab.')
+        sys.exit(0)
+    def log_message(self, *a): pass
+http.server.HTTPServer(('', 9876), H).handle_request()
+")
+
+# Exchange for tokens
+curl -s -X POST https://oauth2.googleapis.com/token \
+  -d "client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&code=${CODE}&grant_type=authorization_code&redirect_uri=${REDIRECT_URI}" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['refresh_token'])"
+```
+
+The `refresh_token` value printed is what you need. **Save it** -- you cannot retrieve it again.
+
+### 4. Download the Binary
 
 Download the latest binary for your platform from the [Releases page](https://github.com/ncosentino/google-keyword-planner-mcp/releases/latest).
 
@@ -64,7 +123,30 @@ Download the latest binary for your platform from the [Releases page](https://gi
 | Windows x64 | `kwp-mcp-go-windows-amd64.exe` | `kwp-mcp-csharp-win-x64.exe` |
 | Windows ARM64 | `kwp-mcp-go-windows-arm64.exe` | `kwp-mcp-csharp-win-arm64.exe` |
 
-### 4. Configure Your MCP Client
+### 5. Configure Your MCP Client
+
+#### GitHub Copilot CLI / Claude Code
+
+```json
+{
+  "mcpServers": {
+    "keyword-planner": {
+      "type": "stdio",
+      "command": "/path/to/kwp-mcp-go-linux-amd64",
+      "args": [],
+      "env": {
+        "GOOGLE_ADS_DEVELOPER_TOKEN": "your-developer-token",
+        "GOOGLE_ADS_CLIENT_ID": "your-client-id.apps.googleusercontent.com",
+        "GOOGLE_ADS_CLIENT_SECRET": "your-client-secret",
+        "GOOGLE_ADS_REFRESH_TOKEN": "your-refresh-token",
+        "GOOGLE_ADS_CUSTOMER_ID": "123-456-7890"
+      }
+    }
+  }
+}
+```
+
+> **Note:** Some MCP clients (e.g. GitHub Copilot CLI) require `"args": []` to be present when `"type": "stdio"` is specified. Claude Desktop does not require it. If your client fails to load the server, try adding `"args": []`.
 
 #### Claude Desktop (`claude_desktop_config.json`)
 
@@ -84,6 +166,12 @@ Download the latest binary for your platform from the [Releases page](https://gi
   }
 }
 ```
+
+## Important: Billing Requirement
+
+The Google Ads Keyword Planner API **requires a Google Ads account with billing configured**. This is a Google requirement -- accounts without an active payment method return HTTP 400 errors regardless of credentials.
+
+You do not need to run any ads or spend money. You just need a payment method added to your Google Ads account. A manager account (MCC) alone is not enough -- you need at least one linked sub-account with billing set up.
 
 ---
 
