@@ -101,21 +101,21 @@ func main() {
 
 // generateKeywordIdeasInput is the input schema for the generate_keyword_ideas tool.
 type generateKeywordIdeasInput struct {
-	SeedKeywords []string `json:"seed_keywords"`
-	URL          string   `json:"url"`
-	Language     string   `json:"language"`
+	SeedKeywords []string `json:"seed_keywords" jsonschema:"Seed keywords to generate ideas from (e.g. ['C# tutorial', 'dotnet performance']). At least one of seed_keywords or url must be provided."`
+	URL          string   `json:"url"           jsonschema:"A URL to generate ideas from (e.g. 'https://devleader.ca'). At least one of seed_keywords or url must be provided."`
+	Language     string   `json:"language"      jsonschema:"Language resource name (e.g. 'languageConstants/1000' for English). Omit to use all languages."`
 }
 
 // getHistoricalMetricsInput is the input schema for the get_historical_metrics tool.
 type getHistoricalMetricsInput struct {
-	Keywords []string `json:"keywords"`
+	Keywords []string `json:"keywords" jsonschema:"List of keywords to get historical search metrics for (e.g. ['dependency injection', 'SOLID principles'])."`
 }
 
 // getKeywordForecastInput is the input schema for the get_keyword_forecast tool.
 type getKeywordForecastInput struct {
-	Keywords     []string `json:"keywords"`
-	MaxCPCMicros int64    `json:"max_cpc_micros"`
-	ForecastDays int      `json:"forecast_days"`
+	Keywords     []string `json:"keywords"       jsonschema:"List of keywords to forecast performance for."`
+	MaxCPCMicros int64    `json:"max_cpc_micros" jsonschema:"Maximum CPC bid in micros (1,000,000 = $1.00)."`
+	ForecastDays int      `json:"forecast_days"  jsonschema:"Number of days to forecast. Defaults to 30 if omitted or 0."`
 }
 
 func generateKeywordIdeas(ctx context.Context, client *keywordplanner.Client, input generateKeywordIdeasInput) (*mcp.CallToolResult, any, error) {
