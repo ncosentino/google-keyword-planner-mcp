@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block extrahead %}
+  {{ super() }}
+  {% if page %}
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="{{ page.title }} – Google Keyword Planner MCP" />
+  <meta property="og:description" content="{{ page.meta.description | default(config.site_description) }}" />
+  <meta property="og:image" content="https://www.devleader.ca/devleader-social-card.png" />
+  <meta property="og:url" content="{{ page.canonical_url }}" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="{{ page.title }} – Google Keyword Planner MCP" />
+  <meta name="twitter:description" content="{{ page.meta.description | default(config.site_description) }}" />
+  <meta name="twitter:image" content="https://www.devleader.ca/devleader-social-card.png" />
+  {% endif %}
+  {% if page and page.ancestors %}
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "Google Keyword Planner MCP",
+        "item": "{{ config.site_url }}"
+      }{% for ancestor in page.ancestors %},
+      {
+        "@type": "ListItem",
+        "position": {{ loop.index + 1 }},
+        "name": "{{ ancestor.title }}",
+        "item": "{{ config.site_url }}"
+      }{% endfor %},
+      {
+        "@type": "ListItem",
+        "position": {{ page.ancestors | length + 2 }},
+        "name": "{{ page.title }}",
+        "item": "{{ page.canonical_url }}"
+      }
+    ]
+  }
+  </script>
+  {% endif %}
+  {% if page and page.url == '.' %}
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Google Keyword Planner MCP",
+    "description": "{{ config.site_description }}",
+    "url": "{{ config.site_url }}",
+    "downloadUrl": "https://github.com/ncosentino/google-keyword-planner-mcp/releases/latest",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Linux, macOS, Windows",
+    "programmingLanguage": ["Go", "C#"],
+    "license": "https://github.com/ncosentino/google-keyword-planner-mcp/blob/main/LICENSE",
+    "author": {
+      "@type": "Person",
+      "name": "Nick Cosentino",
+      "url": "https://www.devleader.ca"
+    },
+    "codeRepository": "https://github.com/ncosentino/google-keyword-planner-mcp",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    }
+  }
+  </script>
+  {% endif %}
+{% endblock %}

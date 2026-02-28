@@ -1,0 +1,24 @@
+# Google Keyword Planner MCP
+
+> Zero-dependency MCP server that exposes Google Ads Keyword Planner to AI assistants.
+
+The Google Keyword Planner MCP server provides native binaries for Go and C#.
+It exposes three MCP tools -- generate_keyword_ideas, get_historical_metrics, get_keyword_forecast --
+directly to AI assistants like Claude, GitHub Copilot, and Cursor.
+Author: Nick Cosentino (https://www.devleader.ca).
+
+- [Home](https://github.devleader.ca/google-keyword-planner-mcp/) -- Zero-dependency MCP server exposing Google Ads Keyword Planner to AI assistants. Pre-built binaries for Linux, macOS, and Windows. No runtime required.
+- [Getting Started](https://github.devleader.ca/google-keyword-planner-mcp/getting-started/) -- Step-by-step guide to setting up the Google Keyword Planner MCP server -- Google Ads account, developer token, OAuth2 refresh token, and binary download.
+
+## MCP Tools
+
+- [Overview](https://github.devleader.ca/google-keyword-planner-mcp/tools/) -- All three MCP tools exposed by the Google Keyword Planner MCP server -- generate keyword ideas, get historical metrics, and forecast keyword performance.
+- [generate_keyword_ideas](https://github.devleader.ca/google-keyword-planner-mcp/tools/generate-keyword-ideas/) -- generate_keyword_ideas MCP tool -- generate related keywords from seed keywords or a URL with search volume, competition level, and CPC estimates.
+- [get_historical_metrics](https://github.devleader.ca/google-keyword-planner-mcp/tools/get-historical-metrics/) -- get_historical_metrics MCP tool -- retrieve historical search volume, competition scores, and CPC estimates for a list of keywords, including 12-month breakdowns.
+- [get_keyword_forecast](https://github.devleader.ca/google-keyword-planner-mcp/tools/get-keyword-forecast/) -- get_keyword_forecast MCP tool -- project impressions, clicks, and cost for keywords at a given max CPC bid over a configurable forecast window.
+- [Setup by Tool](https://github.devleader.ca/google-keyword-planner-mcp/setup-by-tool/) -- Configure the Google Keyword Planner MCP server in GitHub Copilot CLI, Claude Desktop, Cursor, VS Code, Visual Studio, or via a .env file.
+- [Configuration](https://github.devleader.ca/google-keyword-planner-mcp/configuration/) -- Full reference for all Google Keyword Planner MCP credentials -- CLI flags, environment variables, .env file, customer ID formats, and developer token access levels.
+- [Troubleshooting](https://github.devleader.ca/google-keyword-planner-mcp/troubleshooting/) -- Fix DEVELOPER_TOKEN_NOT_APPROVED, USER_PERMISSION_DENIED, billing errors, and other common issues with the Google Keyword Planner MCP server.
+- [Go vs C#](https://github.devleader.ca/google-keyword-planner-mcp/implementations/) -- Compare the Go and C# Native AOT implementations of the Google Keyword Planner MCP server -- binary size, startup time, and when to choose each.
+- [Building from Source](https://github.devleader.ca/google-keyword-planner-mcp/building/) -- Build the Google Keyword Planner MCP server from source using Go or C# Native AOT, with a full platform RID table for self-contained binary publishing.
+- [Articles](https://github.devleader.ca/google-keyword-planner-mcp/articles/) -- Zero-dependency MCP server for Google Ads Keyword Planner. Pre-built native binaries expose keyword ideas, historical search volume, and ad forecasts directly to AI assistants like Claude, GitHub Copilot, and Cursor.
