@@ -1,0 +1,1 @@
+# Google Keyword Planner MCP

@@ -1,0 +1,80 @@
+site_name: Google Keyword Planner MCP
+site_url: https://github.devleader.ca/google-keyword-planner-mcp/
+site_description: >-
+  Zero-dependency MCP server for Google Ads Keyword Planner. Pre-built native binaries
+  expose keyword ideas, historical search volume, and ad forecasts directly to AI
+  assistants like Claude, GitHub Copilot, and Cursor.
+site_author: Nick Cosentino
+
+repo_name: ncosentino/google-keyword-planner-mcp
+repo_url: https://github.com/ncosentino/google-keyword-planner-mcp
+
+copyright: Copyright &copy; Nick Cosentino — <a href="https://www.devleader.ca">Dev Leader</a>
+
+theme:
+  name: material
+  custom_dir: docs/overrides
+  palette:
+    - scheme: default
+      primary: blue
+      accent: light blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: blue
+      accent: light blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+
+plugins:
+  - search
+  - meta
+
+hooks:
+  - docs/hooks/schema.py
+  - docs/hooks/llms_txt.py
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - MCP Tools:
+    - Overview: tools/index.md
+    - generate_keyword_ideas: tools/generate-keyword-ideas.md
+    - get_historical_metrics: tools/get-historical-metrics.md
+    - get_keyword_forecast: tools/get-keyword-forecast.md
+  - Setup by Tool: setup-by-tool.md
+  - Configuration: configuration.md
+  - Troubleshooting: troubleshooting.md
+  - Go vs C#: implementations.md
+  - Building from Source: building.md
+  - Articles: articles.md
+
+markdown_extensions:
+  - admonition
+  - tables
+  - attr_list
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - toc:
+      permalink: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/ncosentino
+    - icon: fontawesome/solid/globe
+      link: https://www.devleader.ca

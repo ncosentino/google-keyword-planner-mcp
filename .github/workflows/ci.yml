@@ -5,6 +5,7 @@ on:
     branches: ["main"]
   pull_request:
     branches: ["main"]
+  workflow_dispatch:
 
 jobs:
   go:
@@ -61,3 +62,35 @@ jobs:
 
       - name: Test
         run: dotnet test KeywordPlannerMcp.slnx --no-build -c Release --logger "console;verbosity=minimal"
+
+  docs:
+    name: Build and deploy documentation
+    runs-on: ubuntu-latest
+    needs: [go, csharp]
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install MkDocs
+        run: pip install mkdocs-material
+
+      - name: Generate articles page
+        run: python scripts/generate-articles.py docs/articles.md
+
+      - name: Build documentation
+        run: python -m mkdocs build
+
+      - name: Deploy documentation
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          keep_files: true

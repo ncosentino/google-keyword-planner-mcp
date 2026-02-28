@@ -20,6 +20,10 @@ csharp/**/.vs/
 # Build artifacts
 dist/
 publish/
+site/
+
+# Documentation
+__pycache__/
 
 # Environment
 .env
