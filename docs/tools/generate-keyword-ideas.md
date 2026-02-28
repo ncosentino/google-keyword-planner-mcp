@@ -1,3 +1,7 @@
+---
+description: generate_keyword_ideas MCP tool -- generate related keywords from seed keywords or a URL with search volume, competition level, and CPC estimates.
+---
+
 # generate_keyword_ideas
 
 Generate related keyword ideas from seed keywords and/or a URL. Returns keywords with average monthly search volume, competition level, and CPC estimates.

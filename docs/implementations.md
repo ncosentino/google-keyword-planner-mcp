@@ -1,3 +1,7 @@
+---
+description: Compare the Go and C# Native AOT implementations of the Google Keyword Planner MCP server -- binary size, startup time, and when to choose each.
+---
+
 # Go vs C#
 
 Both implementations expose identical MCP tools and accept the same credentials. Choose based on your environment and preferences.

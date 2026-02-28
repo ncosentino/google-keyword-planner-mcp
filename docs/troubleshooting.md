@@ -1,3 +1,7 @@
+---
+description: Fix DEVELOPER_TOKEN_NOT_APPROVED, USER_PERMISSION_DENIED, billing errors, and other common issues with the Google Keyword Planner MCP server.
+---
+
 # Troubleshooting
 
 ## Common Errors

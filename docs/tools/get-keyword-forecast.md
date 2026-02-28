@@ -1,3 +1,7 @@
+---
+description: get_keyword_forecast MCP tool -- project impressions, clicks, and cost for keywords at a given max CPC bid over a configurable forecast window.
+---
+
 # get_keyword_forecast
 
 Project future impressions, clicks, and cost for a set of keywords at a given maximum CPC bid. Useful for estimating the potential traffic from a paid campaign before committing ad spend.

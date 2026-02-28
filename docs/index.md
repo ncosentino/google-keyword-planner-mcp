@@ -1,3 +1,7 @@
+---
+description: Zero-dependency MCP server exposing Google Ads Keyword Planner to AI assistants. Pre-built binaries for Linux, macOS, and Windows. No runtime required.
+---
+
 # Google Keyword Planner MCP
 
 > **Zero-dependency MCP server for Google Ads Keyword Planner.**

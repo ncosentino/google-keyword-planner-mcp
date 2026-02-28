@@ -1,3 +1,7 @@
+---
+description: Full reference for all Google Keyword Planner MCP credentials -- CLI flags, environment variables, .env file, customer ID formats, and developer token access levels.
+---
+
 # Configuration
 
 Credentials are resolved in this priority order: **CLI flag > environment variable > `.env` file**.

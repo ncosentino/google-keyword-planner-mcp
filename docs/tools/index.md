@@ -1,3 +1,7 @@
+---
+description: All three MCP tools exposed by the Google Keyword Planner MCP server -- generate keyword ideas, get historical metrics, and forecast keyword performance.
+---
+
 # MCP Tools
 
 The Google Keyword Planner MCP server exposes three tools. All tools require valid credentials -- see [Configuration](../configuration.md).

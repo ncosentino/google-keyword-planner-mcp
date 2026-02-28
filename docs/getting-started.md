@@ -1,3 +1,7 @@
+---
+description: Step-by-step guide to setting up the Google Keyword Planner MCP server -- Google Ads account, developer token, OAuth2 refresh token, and binary download.
+---
+
 # Getting Started
 
 The Google Ads Keyword Planner API has more prerequisites than most APIs -- you need a Google Ads manager account, a developer token, and an OAuth2 refresh token. This page walks through every step.

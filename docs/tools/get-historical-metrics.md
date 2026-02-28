@@ -1,3 +1,7 @@
+---
+description: get_historical_metrics MCP tool -- retrieve historical search volume, competition scores, and CPC estimates for a list of keywords, including 12-month breakdowns.
+---
+
 # get_historical_metrics
 
 Get historical search volume and competition data for a specific list of keywords. Unlike `generate_keyword_ideas`, this tool takes an exact keyword list and returns data for each one -- no new ideas are generated.

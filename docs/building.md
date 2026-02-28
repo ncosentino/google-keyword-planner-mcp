@@ -1,3 +1,7 @@
+---
+description: Build the Google Keyword Planner MCP server from source using Go or C# Native AOT, with a full platform RID table for self-contained binary publishing.
+---
+
 # Building from Source
 
 ## Go
