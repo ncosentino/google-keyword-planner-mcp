@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://github.devleader.ca/google-keyword-planner-mcp/sitemap.xml
