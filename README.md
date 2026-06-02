@@ -305,6 +305,134 @@ For most MCP use cases, either works fine. The Go binary starts slightly faster;
 
 ---
 
+## Deploying to Google Cloud Run
+
+Cloud Run runs the server in HTTP mode (`--transport http`), listening on the `PORT` environment variable Cloud Run injects automatically.
+
+### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) installed and running
+- [Google Cloud CLI](https://cloud.google.com/sdk/docs/install) installed and authenticated (`gcloud auth login`)
+- A GCP project with the **Cloud Run API** and **Artifact Registry API** enabled
+
+### 1. Create an Artifact Registry repository
+
+```bash
+gcloud artifacts repositories create keyword-planner-mcp \
+  --repository-format=docker \
+  --location=us-central1 \
+  --project=YOUR_PROJECT_ID
+```
+
+### 2. Build and push the Docker image
+
+```bash
+# Authenticate Docker to Artifact Registry
+gcloud auth configure-docker us-central1-docker.pkg.dev
+
+# Build and push
+docker build -t us-central1-docker.pkg.dev/YOUR_PROJECT_ID/keyword-planner-mcp/server:latest .
+docker push us-central1-docker.pkg.dev/YOUR_PROJECT_ID/keyword-planner-mcp/server:latest
+```
+
+### 3. Store credentials in Secret Manager (recommended)
+
+Avoid passing credentials as plain environment variables by storing them in Secret Manager:
+
+```bash
+echo -n "your-developer-token"  | gcloud secrets create GOOGLE_ADS_DEVELOPER_TOKEN  --data-file=- --project=YOUR_PROJECT_ID
+echo -n "your-client-id"        | gcloud secrets create GOOGLE_ADS_CLIENT_ID         --data-file=- --project=YOUR_PROJECT_ID
+echo -n "your-client-secret"    | gcloud secrets create GOOGLE_ADS_CLIENT_SECRET      --data-file=- --project=YOUR_PROJECT_ID
+echo -n "your-refresh-token"    | gcloud secrets create GOOGLE_ADS_REFRESH_TOKEN      --data-file=- --project=YOUR_PROJECT_ID
+echo -n "your-customer-id"      | gcloud secrets create GOOGLE_ADS_CUSTOMER_ID        --data-file=- --project=YOUR_PROJECT_ID
+# Optional -- only needed if customer-id is a managed sub-account
+echo -n "your-manager-id"       | gcloud secrets create GOOGLE_ADS_LOGIN_CUSTOMER_ID  --data-file=- --project=YOUR_PROJECT_ID
+```
+
+Grant the Cloud Run service account access to the secrets:
+
+```bash
+PROJECT_NUMBER=$(gcloud projects describe YOUR_PROJECT_ID --format='value(projectNumber)')
+SA="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+
+for SECRET in GOOGLE_ADS_DEVELOPER_TOKEN GOOGLE_ADS_CLIENT_ID GOOGLE_ADS_CLIENT_SECRET \
+              GOOGLE_ADS_REFRESH_TOKEN GOOGLE_ADS_CUSTOMER_ID GOOGLE_ADS_LOGIN_CUSTOMER_ID; do
+  gcloud secrets add-iam-policy-binding $SECRET \
+    --member="$SA" --role="roles/secretmanager.secretAccessor" \
+    --project=YOUR_PROJECT_ID
+done
+```
+
+### 4. Deploy to Cloud Run
+
+**With Secret Manager (recommended):**
+
+```bash
+gcloud run deploy google-keyword-planner-mcp \
+  --image=us-central1-docker.pkg.dev/YOUR_PROJECT_ID/keyword-planner-mcp/server:latest \
+  --region=us-central1 \
+  --project=YOUR_PROJECT_ID \
+  --no-allow-unauthenticated \
+  --set-secrets="\
+GOOGLE_ADS_DEVELOPER_TOKEN=GOOGLE_ADS_DEVELOPER_TOKEN:latest,\
+GOOGLE_ADS_CLIENT_ID=GOOGLE_ADS_CLIENT_ID:latest,\
+GOOGLE_ADS_CLIENT_SECRET=GOOGLE_ADS_CLIENT_SECRET:latest,\
+GOOGLE_ADS_REFRESH_TOKEN=GOOGLE_ADS_REFRESH_TOKEN:latest,\
+GOOGLE_ADS_CUSTOMER_ID=GOOGLE_ADS_CUSTOMER_ID:latest,\
+GOOGLE_ADS_LOGIN_CUSTOMER_ID=GOOGLE_ADS_LOGIN_CUSTOMER_ID:latest"
+```
+
+**With plain environment variables (simpler, less secure):**
+
+```bash
+gcloud run deploy google-keyword-planner-mcp \
+  --image=us-central1-docker.pkg.dev/YOUR_PROJECT_ID/keyword-planner-mcp/server:latest \
+  --region=us-central1 \
+  --project=YOUR_PROJECT_ID \
+  --no-allow-unauthenticated \
+  --set-env-vars="\
+GOOGLE_ADS_DEVELOPER_TOKEN=your-developer-token,\
+GOOGLE_ADS_CLIENT_ID=your-client-id,\
+GOOGLE_ADS_CLIENT_SECRET=your-client-secret,\
+GOOGLE_ADS_REFRESH_TOKEN=your-refresh-token,\
+GOOGLE_ADS_CUSTOMER_ID=your-customer-id,\
+GOOGLE_ADS_LOGIN_CUSTOMER_ID=your-manager-id"
+```
+
+The deploy command prints the service URL when it completes:
+
+```
+Service URL: https://google-keyword-planner-mcp-xxxx-uc.a.run.app
+```
+
+### 5. Configure your MCP client
+
+Use the service URL with an authenticated proxy. Because `--no-allow-unauthenticated` is set, requests must include a valid Google identity token. The easiest approach is to use the `gcloud` CLI as a local proxy:
+
+```bash
+gcloud run services proxy google-keyword-planner-mcp \
+  --region=us-central1 \
+  --project=YOUR_PROJECT_ID \
+  --port=8080
+```
+
+Then point your MCP client at `http://localhost:8080`:
+
+```json
+{
+  "mcpServers": {
+    "keyword-planner": {
+      "type": "http",
+      "url": "http://localhost:8080"
+    }
+  }
+}
+```
+
+Alternatively, use the service URL directly with an `Authorization: Bearer $(gcloud auth print-identity-token)` header if your MCP client supports custom headers.
+
+---
+
 ## Building from Source
 
 ### Go

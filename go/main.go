@@ -1,12 +1,15 @@
 // Command google-keyword-planner-mcp is an MCP server that exposes Google Ads Keyword Planner
-// as tools for AI assistants. It communicates via STDIO using the MCP protocol.
+// as tools for AI assistants. It supports STDIO transport (default) and HTTP transport
+// (for deployment on platforms like Google Cloud Run).
 //
 // Usage:
 //
-//	google-keyword-planner-mcp [--developer-token <token>] [--client-id <id>]
+//	google-keyword-planner-mcp [--transport stdio|http] [--port <port>]
+//	    [--developer-token <token>] [--client-id <id>]
 //	    [--client-secret <secret>] [--refresh-token <token>] [--customer-id <id>]
 //
 // Credential resolution order: CLI flags > environment variables > .env file.
+// When --transport http, the PORT environment variable sets the listen port (default 8080).
 package main
 
 import (
@@ -15,6 +18,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -25,6 +29,7 @@ import (
 var version = "dev"
 
 func main() {
+	transport := flag.String("transport", "stdio", "Transport mode: stdio or http")
 	developerToken := flag.String("developer-token", "", "Google Ads developer token")
 	clientID := flag.String("client-id", "", "OAuth2 client ID")
 	clientSecret := flag.String("client-secret", "", "OAuth2 client secret")
@@ -92,8 +97,33 @@ func main() {
 		},
 	)
 
-	slog.Info("google-keyword-planner-mcp starting", "version", version, "transport", "stdio")
-	if err := srv.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
+	switch *transport {
+	case "http":
+		runHTTP(srv)
+	default:
+		slog.Info("google-keyword-planner-mcp starting", "version", version, "transport", "stdio")
+		if err := srv.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
+			slog.Error("server stopped with error", "err", err)
+			os.Exit(1)
+		}
+	}
+}
+
+func runHTTP(srv *mcp.Server) {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	handler := mcp.NewStreamableHTTPHandler(func(_ *http.Request) *mcp.Server {
+		return srv
+	}, nil)
+
+	mux := http.NewServeMux()
+	mux.Handle("/", handler)
+
+	slog.Info("google-keyword-planner-mcp starting", "version", version, "transport", "http", "port", port)
+	if err := http.ListenAndServe(":"+port, mux); err != nil {
 		slog.Error("server stopped with error", "err", err)
 		os.Exit(1)
 	}
