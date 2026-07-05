@@ -131,7 +131,13 @@ func TestHTTPTransport_RejectsDisallowedHost(t *testing.T) {
 	httpSrv := httptest.NewServer(allowedHostsMiddleware(mcpHandler, []string{"only-this-host-is-allowed"}))
 	defer httpSrv.Close()
 
-	resp, err := http.Post(httpSrv.URL, "application/json", nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, httpSrv.URL, nil)
+	if err != nil {
+		t.Fatalf("NewRequestWithContext: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("POST: %v", err)
 	}
