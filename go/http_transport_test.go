@@ -148,6 +148,28 @@ func TestHTTPTransport_RejectsDisallowedHost(t *testing.T) {
 	}
 }
 
+// TestResolveHTTPPort_UsesEnvVarWhenSet confirms PORT, when set, takes
+// precedence -- required for platforms (e.g. Cloud Run) that assign it
+// automatically.
+func TestResolveHTTPPort_UsesEnvVarWhenSet(t *testing.T) {
+	t.Setenv("PORT", "9999")
+
+	if got := resolveHTTPPort(); got != "9999" {
+		t.Errorf("resolveHTTPPort() = %q, want %q", got, "9999")
+	}
+}
+
+// TestResolveHTTPPort_DefaultsTo8080WhenUnset confirms the documented default
+// of 8080 applies when PORT is unset, forced deterministically via t.Setenv
+// rather than relying on the ambient environment not already having PORT set.
+func TestResolveHTTPPort_DefaultsTo8080WhenUnset(t *testing.T) {
+	t.Setenv("PORT", "")
+
+	if got := resolveHTTPPort(); got != "8080" {
+		t.Errorf("resolveHTTPPort() = %q, want %q", got, "8080")
+	}
+}
+
 // TestSplitAndTrim_ParsesCommaSeparatedList confirms the --allowed-hosts flag
 // value is parsed into a clean slice: trimmed, with empty entries dropped.
 func TestSplitAndTrim_ParsesCommaSeparatedList(t *testing.T) {
