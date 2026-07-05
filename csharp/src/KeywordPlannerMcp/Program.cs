@@ -1,9 +1,8 @@
+using System.Globalization;
+using KeywordPlannerMcp;
 using KeywordPlannerMcp.Config;
-using KeywordPlannerMcp.KeywordPlanner;
 using KeywordPlannerMcp.Tools;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 
 string? developerToken = CredentialResolver.ResolveCredential(
@@ -47,38 +46,23 @@ if (string.IsNullOrWhiteSpace(developerToken) ||
     return 1;
 }
 
+// --transport has no environment-variable fallback, matching the Go implementation.
+string transport = args.SkipWhile(a => a != "--transport").Skip(1).FirstOrDefault() ?? "stdio";
+
+if (transport == "http")
+{
+    var port = Environment.GetEnvironmentVariable("PORT") is { Length: > 0 } portEnv ? portEnv : "8080";
+    var app = Hosting.BuildHttpHost(
+        args, developerToken, clientId, clientSecret, refreshToken, customerId, loginCustomerId,
+        int.Parse(port, CultureInfo.InvariantCulture));
+    await app.RunAsync().ConfigureAwait(false);
+    return 0;
+}
+
 var builder = Host.CreateApplicationBuilder(args);
 
 // All logs must go to stderr to avoid corrupting the MCP STDIO stream.
-builder.Logging.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
-builder.Logging.SetMinimumLevel(LogLevel.Warning);
-
-builder.Services.AddHttpClient<OAuth2TokenProvider>(http =>
-{
-    http.Timeout = TimeSpan.FromSeconds(30);
-});
-
-builder.Services.AddTransient<OAuth2TokenProvider>(sp =>
-{
-    var factory = sp.GetRequiredService<IHttpClientFactory>();
-    return new OAuth2TokenProvider(
-        clientId, clientSecret, refreshToken,
-        factory.CreateClient(nameof(OAuth2TokenProvider)));
-});
-
-builder.Services.AddHttpClient<KeywordPlannerClient>(http =>
-{
-    http.Timeout = TimeSpan.FromSeconds(30);
-});
-
-builder.Services.AddTransient<KeywordPlannerClient>(sp =>
-{
-    var factory = sp.GetRequiredService<IHttpClientFactory>();
-    var tokenProvider = sp.GetRequiredService<OAuth2TokenProvider>();
-    return new KeywordPlannerClient(
-        developerToken, customerId, loginCustomerId, tokenProvider,
-        factory.CreateClient(nameof(KeywordPlannerClient)));
-});
+Hosting.ConfigureCommonServices(builder, developerToken, clientId, clientSecret, refreshToken, customerId, loginCustomerId);
 
 builder.Services
     .AddMcpServer()

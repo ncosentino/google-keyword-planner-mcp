@@ -15,8 +15,9 @@ Both implementations expose identical MCP tools and accept the same credentials.
 | Memory usage | Lower | Slightly higher |
 | Platforms | All | All |
 | Runtime required | None | None |
+| Transports | stdio, HTTP | stdio, HTTP |
 
-Both are self-contained native binaries -- no Go toolchain, no .NET runtime, no Node.js, no Python required.
+Both are self-contained native binaries -- no Go toolchain, no .NET runtime, no Node.js, no Python required. Both support the same [HTTP transport](transports.md) with an equivalent Host allow-list security default; the only cosmetic difference is the HTTP status code returned for a disallowed host (`403` for Go, `400` for C#, since C# uses ASP.NET Core's built-in Host Filtering Middleware as-is rather than custom logic).
 
 ## When to Choose Go
 

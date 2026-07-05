@@ -49,3 +49,9 @@ cd go && go test ./...
 # C#
 cd csharp && dotnet test
 ```
+
+---
+
+## HTTP Transport
+
+No special build steps are needed for HTTP transport support -- it's a runtime flag (`--transport http`), not a build-time option, in both languages. See [Transports](transports.md) for usage.

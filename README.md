@@ -247,6 +247,33 @@ GOOGLE_ADS_LOGIN_CUSTOMER_ID=your-manager-account-id
 
 ---
 
+## Transports
+
+Both binaries default to **stdio** -- everything above uses it. For remote/networked deployments, pass `--transport http` to serve MCP over HTTP instead:
+
+```bash
+./kwp-mcp-go-linux-amd64 --transport http --developer-token ... --client-id ... # etc.
+```
+
+The server listens on the `PORT` environment variable (default `8080`). Point an HTTP-capable MCP client at the server instead of launching it as a subprocess:
+
+```json
+{
+  "mcpServers": {
+    "keyword-planner": {
+      "type": "http",
+      "url": "http://localhost:8080/"
+    }
+  }
+}
+```
+
+**Security default:** neither Go's `net/http` nor C#'s Kestrel validate the `Host` header by default, which would otherwise allow DNS rebinding against a locally-bound server. Both binaries reject any `Host` header outside `localhost`, `127.0.0.1`, `[::1]` unless you explicitly widen the allow-list -- `--allowed-hosts` (comma-separated) for Go, the standard `AllowedHosts` ASP.NET Core config key (semicolon-separated, settable via `--AllowedHosts` on the command line) for C#.
+
+This is a transport flag, not a hosting product -- no Dockerfile, no cloud-provider automation, and no authentication in front of the MCP endpoint beyond the Host allow-list. TLS termination and network exposure are your responsibility if you deploy either binary over HTTP. See the [Transports doc](https://github.devleader.ca/google-keyword-planner-mcp/transports/) for the full reference.
+
+---
+
 ## Tool Reference
 
 ### `generate_keyword_ideas`
@@ -300,8 +327,9 @@ Both binaries implement identical behavior. Choose based on preference:
 | Startup time | < 5ms | ~20ms |
 | Memory usage | Lower | Slightly higher |
 | Platform | All | All |
+| Transports | stdio, HTTP | stdio, HTTP |
 
-For most MCP use cases, either works fine. The Go binary starts slightly faster; the C# binary may be preferred if you're already in a .NET ecosystem.
+For most MCP use cases, either works fine. The Go binary starts slightly faster; the C# binary may be preferred if you're already in a .NET ecosystem. Both support the same [HTTP transport](#transports) with equivalent security defaults.
 
 ---
 

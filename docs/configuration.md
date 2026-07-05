@@ -59,3 +59,9 @@ Dashes are stripped automatically before the API call.
 | Test mode (default) | ❌ No -- only [test accounts](https://developers.google.com/google-ads/api/docs/best-practices/test-accounts) | Issued automatically when you create a developer token |
 | Basic access | ✅ Yes | Click **Apply for Basic Access** at `https://ads.google.com/aw/apicenter` and wait a few days |
 | Standard access | ✅ Yes | Apply separately; not required for Keyword Planner |
+
+---
+
+## Transport
+
+Credentials resolve the same way regardless of transport. See **[Transports](transports.md)** for running the server over HTTP instead of the default stdio, including the `--transport`/`--allowed-hosts` flags and their security defaults.
