@@ -100,10 +100,13 @@ func main() {
 }
 
 // generateKeywordIdeasInput is the input schema for the generate_keyword_ideas tool.
+// SeedKeywords and URL both carry ",omitempty" so neither is marked required in the
+// exported JSON schema: the tool only requires that at least one of them be provided,
+// which is enforced at runtime in generateKeywordIdeas rather than by the schema.
 type generateKeywordIdeasInput struct {
-	SeedKeywords []string `json:"seed_keywords" jsonschema:"Seed keywords to generate ideas from (e.g. ['C# tutorial', 'dotnet performance']). At least one of seed_keywords or url must be provided."`
-	URL          string   `json:"url"           jsonschema:"A URL to generate ideas from (e.g. 'https://devleader.ca'). At least one of seed_keywords or url must be provided."`
-	Language     string   `json:"language"      jsonschema:"Language resource name (e.g. 'languageConstants/1000' for English). Omit to use all languages."`
+	SeedKeywords []string `json:"seed_keywords,omitempty" jsonschema:"Seed keywords to generate ideas from (e.g. ['C# tutorial', 'dotnet performance']). At least one of seed_keywords or url must be provided."`
+	URL          string   `json:"url,omitempty"           jsonschema:"A URL to generate ideas from (e.g. 'https://devleader.ca'). At least one of seed_keywords or url must be provided."`
+	Language     string   `json:"language,omitempty"      jsonschema:"Language resource name (e.g. 'languageConstants/1000' for English). Omit to use all languages."`
 }
 
 // getHistoricalMetricsInput is the input schema for the get_historical_metrics tool.
@@ -113,12 +116,17 @@ type getHistoricalMetricsInput struct {
 
 // getKeywordForecastInput is the input schema for the get_keyword_forecast tool.
 type getKeywordForecastInput struct {
-	Keywords     []string `json:"keywords"       jsonschema:"List of keywords to forecast performance for."`
-	MaxCPCMicros int64    `json:"max_cpc_micros" jsonschema:"Maximum CPC bid in micros (1,000,000 = $1.00)."`
-	ForecastDays int      `json:"forecast_days"  jsonschema:"Number of days to forecast. Defaults to 30 if omitted or 0."`
+	Keywords     []string `json:"keywords"                 jsonschema:"List of keywords to forecast performance for."`
+	MaxCPCMicros int64    `json:"max_cpc_micros,omitempty" jsonschema:"Maximum CPC bid in micros (1,000,000 = $1.00). Defaults to 1,000,000 if omitted or 0."`
+	ForecastDays int      `json:"forecast_days,omitempty"  jsonschema:"Number of days to forecast. Defaults to 30 if omitted or 0."`
 }
 
 func generateKeywordIdeas(ctx context.Context, client *keywordplanner.Client, input generateKeywordIdeasInput) (*mcp.CallToolResult, any, error) {
+	if len(input.SeedKeywords) == 0 && input.URL == "" {
+		errResult := map[string]string{"error": "at least one of seed_keywords or url must be provided"}
+		b, _ := json.Marshal(errResult)
+		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(b)}}}, nil, nil
+	}
 	result, err := client.GenerateKeywordIdeas(ctx, input.SeedKeywords, input.URL, input.Language)
 	if err != nil {
 		errResult := map[string]string{"error": fmt.Sprintf("generating keyword ideas: %v", err)}

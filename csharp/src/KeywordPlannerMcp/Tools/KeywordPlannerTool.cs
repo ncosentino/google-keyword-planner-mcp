@@ -21,6 +21,12 @@ internal sealed class KeywordPlannerTool(KeywordPlannerClient client)
             ? null
             : seedKeywords.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
+        if (seeds is null && string.IsNullOrWhiteSpace(url))
+        {
+            var validationError = new ErrorResult("At least one of seedKeywords or url must be provided.");
+            return JsonSerializer.Serialize(validationError, KwpJsonContext.Default.ErrorResult);
+        }
+
         try
         {
             var result = await client.GenerateKeywordIdeasAsync(seeds, url, language, cancellationToken)

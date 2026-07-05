@@ -3,6 +3,7 @@ package keywordplanner_test
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -100,6 +101,37 @@ func TestGenerateKeywordIdeas_OmitsLoginCustomerIDHeaderWhenEmpty(t *testing.T) 
 }
 
 // TestPost_ReturnsFullErrorBody verifies that API error bodies are not truncated.
+// TestGetKeywordForecast_ZeroMaxCPCMicros_DefaultsTo1Million verifies that a
+// non-positive maxCPCMicros is replaced with the default bid of 1,000,000 micros
+// ($1.00), matching the C# implementation's default and the schema's documented
+// "Defaults to 1,000,000 if omitted or 0" behavior.
+func TestGetKeywordForecast_ZeroMaxCPCMicros_DefaultsTo1Million(t *testing.T) {
+	t.Parallel()
+
+	var capturedBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedBody, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"adGroupForecastMetrics": []any{}})
+	}))
+	defer srv.Close()
+
+	client := keywordplanner.NewTestClient("dev-token", "123", "", srv.URL, srv.Client())
+	_, err := client.GetKeywordForecast(context.Background(), []string{"go"}, 0, 30)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var req map[string]any
+	if err := json.Unmarshal(capturedBody, &req); err != nil {
+		t.Fatalf("failed to parse captured request body: %v", err)
+	}
+	bidMicros := req["campaignForecastSpec"].(map[string]any)["biddingStrategy"].(map[string]any)["manualCpcBiddingStrategy"].(map[string]any)["maxCpcBidMicros"]
+	if bidMicros != "1000000" {
+		t.Errorf("maxCpcBidMicros = %v, want %q", bidMicros, "1000000")
+	}
+}
+
 func TestPost_ReturnsFullErrorBody(t *testing.T) {
 	t.Parallel()
 
