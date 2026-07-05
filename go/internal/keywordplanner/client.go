@@ -159,6 +159,9 @@ func (c *Client) GetKeywordForecast(
 	if forecastDays <= 0 {
 		forecastDays = 30
 	}
+	if maxCPCMicros <= 0 {
+		maxCPCMicros = 1_000_000
+	}
 	now := time.Now().UTC()
 	startDate := now.Format("2006-01-02")
 	endDate := now.AddDate(0, 0, forecastDays).Format("2006-01-02")
