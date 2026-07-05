@@ -1,12 +1,14 @@
 // Command google-keyword-planner-mcp is an MCP server that exposes Google Ads Keyword Planner
-// as tools for AI assistants. It communicates via STDIO using the MCP protocol.
+// as tools for AI assistants. It supports STDIO transport (default) and HTTP transport.
 //
 // Usage:
 //
-//	google-keyword-planner-mcp [--developer-token <token>] [--client-id <id>]
-//	    [--client-secret <secret>] [--refresh-token <token>] [--customer-id <id>]
+//	google-keyword-planner-mcp [--transport stdio|http] [--allowed-hosts <list>]
+//	    [--developer-token <token>] [--client-id <id>] [--client-secret <secret>]
+//	    [--refresh-token <token>] [--customer-id <id>]
 //
 // Credential resolution order: CLI flags > environment variables > .env file.
+// When --transport http, the PORT environment variable sets the listen port (default 8080).
 package main
 
 import (
@@ -16,6 +18,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/ncosentino/google-keyword-planner-mcp/go/internal/config"
@@ -31,6 +34,9 @@ func main() {
 	refreshToken := flag.String("refresh-token", "", "OAuth2 refresh token")
 	customerID := flag.String("customer-id", "", "Google Ads customer ID")
 	loginCustomerID := flag.String("login-customer-id", "", "Google Ads manager/MCC account ID (required when customer-id is a sub-account)")
+	transport := flag.String("transport", "stdio", "Transport mode: stdio or http")
+	allowedHosts := flag.String("allowed-hosts", "localhost,127.0.0.1,[::1]",
+		"Comma-separated Host header allow-list for --transport http (protects against DNS rebinding)")
 	flag.Parse()
 
 	// All diagnostic output must go to stderr to avoid corrupting the MCP STDIO stream.
@@ -57,6 +63,23 @@ func main() {
 		cfg.DeveloperToken, cfg.ClientID, cfg.ClientSecret, cfg.RefreshToken, cfg.CustomerID, cfg.LoginCustomerID,
 	)
 
+	srv := newServer(client)
+
+	switch *transport {
+	case "http":
+		runHTTP(srv, splitAndTrim(*allowedHosts))
+	default:
+		slog.Info("google-keyword-planner-mcp starting", "version", version, "transport", "stdio")
+		if err := srv.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
+			slog.Error("server stopped with error", "err", err)
+			os.Exit(1)
+		}
+	}
+}
+
+// newServer builds the MCP server with all tools and middleware registered. It is
+// independent of which transport (stdio or http) will ultimately serve it.
+func newServer(client *keywordplanner.Client) *mcp.Server {
 	srv := mcp.NewServer(&mcp.Implementation{
 		Name:    "google-keyword-planner-mcp",
 		Version: version,
@@ -96,11 +119,19 @@ func main() {
 		},
 	)
 
-	slog.Info("google-keyword-planner-mcp starting", "version", version, "transport", "stdio")
-	if err := srv.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
-		slog.Error("server stopped with error", "err", err)
-		os.Exit(1)
+	return srv
+}
+
+// splitAndTrim splits a comma-separated flag value into a trimmed, non-empty slice.
+func splitAndTrim(s string) []string {
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
 	}
+	return out
 }
 
 // generateKeywordIdeasInput is the input schema for the generate_keyword_ideas tool.

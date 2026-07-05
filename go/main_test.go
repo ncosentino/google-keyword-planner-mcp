@@ -14,37 +14,45 @@ import (
 	"github.com/ncosentino/google-keyword-planner-mcp/go/internal/keywordplanner"
 )
 
-// TestNewServer_RegistersTools verifies that the MCP server can be created and all
-// tools can be registered without panicking. This catches invalid struct tags or
-// schema-generation failures at test time rather than at runtime.
-func TestNewServer_RegistersTools(_ *testing.T) {
-	srv := mcp.NewServer(&mcp.Implementation{
-		Name:    "google-keyword-planner-mcp",
-		Version: "test",
-	}, nil)
+// TestNewServer_RegistersTools verifies that newServer builds a server with all
+// three tools registered and listable via a real client session, catching invalid
+// struct tags or schema-generation failures at test time rather than at runtime.
+func TestNewServer_RegistersTools(t *testing.T) {
+	t.Parallel()
 
 	client := keywordplanner.NewClient("token", "id", "secret", "refresh", "123", "")
+	srv := newServer(client)
 
-	mcp.AddTool(srv,
-		&mcp.Tool{Name: "generate_keyword_ideas", Description: "test"},
-		func(ctx context.Context, _ *mcp.CallToolRequest, input generateKeywordIdeasInput) (*mcp.CallToolResult, any, error) {
-			return generateKeywordIdeas(ctx, client, input)
-		},
-	)
+	ctx := context.Background()
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 
-	mcp.AddTool(srv,
-		&mcp.Tool{Name: "get_historical_metrics", Description: "test"},
-		func(ctx context.Context, _ *mcp.CallToolRequest, input getHistoricalMetricsInput) (*mcp.CallToolResult, any, error) {
-			return getHistoricalMetrics(ctx, client, input)
-		},
-	)
+	serverSession, err := srv.Connect(ctx, serverTransport, nil)
+	if err != nil {
+		t.Fatalf("server.Connect: %v", err)
+	}
+	defer serverSession.Close()
 
-	mcp.AddTool(srv,
-		&mcp.Tool{Name: "get_keyword_forecast", Description: "test"},
-		func(ctx context.Context, _ *mcp.CallToolRequest, input getKeywordForecastInput) (*mcp.CallToolResult, any, error) {
-			return getKeywordForecast(ctx, client, input)
-		},
-	)
+	mcpClient := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "test"}, nil)
+	clientSession, err := mcpClient.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatalf("client.Connect: %v", err)
+	}
+	defer clientSession.Close()
+
+	result, err := clientSession.ListTools(ctx, nil)
+	if err != nil {
+		t.Fatalf("ListTools: %v", err)
+	}
+
+	var names []string
+	for _, tool := range result.Tools {
+		names = append(names, tool.Name)
+	}
+	for _, want := range []string{"generate_keyword_ideas", "get_historical_metrics", "get_keyword_forecast"} {
+		if !slices.Contains(names, want) {
+			t.Errorf("tool %q not registered; got tools %v", want, names)
+		}
+	}
 }
 
 // TestGenerateKeywordIdeasInput_LanguageField_HasDescription confirms that the
