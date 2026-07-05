@@ -53,6 +53,7 @@ nav:
     - get_keyword_forecast: tools/get-keyword-forecast.md
   - Setup by Tool: setup-by-tool.md
   - Configuration: configuration.md
+  - Transports: transports.md
   - Troubleshooting: troubleshooting.md
   - Go vs C#: implementations.md
   - Building from Source: building.md

@@ -170,3 +170,22 @@ You can also pass credentials directly on the command line:
 ```
 
 See [Configuration](configuration.md) for the full resolution order.
+
+---
+
+## Using HTTP Transport
+
+All the configurations above launch the binary as a subprocess over stdio. If your MCP client connects over HTTP instead (e.g. a remote deployment), point it at the server's URL rather than a local command:
+
+```json
+{
+  "mcpServers": {
+    "keyword-planner": {
+      "type": "http",
+      "url": "http://localhost:8080/"
+    }
+  }
+}
+```
+
+The server itself still needs `--transport http` and its credentials -- see **[Transports](transports.md)** for the full flag reference and Host allow-list security defaults.
