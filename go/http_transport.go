@@ -14,10 +14,7 @@ import (
 // PORT environment variable (default 8080). Requests whose Host header isn't in
 // allowedHosts are rejected before reaching the MCP handler.
 func runHTTP(srv *mcp.Server, allowedHosts []string) {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
+	port := resolveHTTPPort()
 
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
 		return srv
@@ -36,6 +33,16 @@ func runHTTP(srv *mcp.Server, allowedHosts []string) {
 		slog.Error("server stopped with error", "err", err)
 		os.Exit(1)
 	}
+}
+
+// resolveHTTPPort returns the PORT environment variable's value, or "8080" if
+// it is unset or empty. Some deployment platforms (e.g. Cloud Run) set PORT
+// automatically, so this must be read at call time rather than assumed absent.
+func resolveHTTPPort() string {
+	if port := os.Getenv("PORT"); port != "" {
+		return port
+	}
+	return "8080"
 }
 
 // allowedHostsMiddleware rejects requests whose Host header (ignoring any port)

@@ -234,3 +234,260 @@ func TestGenerateKeywordIdeas_URLOnly_SkipsValidationError(t *testing.T) {
 		t.Error("Google Ads API should be called when url is provided even without seed_keywords")
 	}
 }
+
+// TestGenerateKeywordIdeas_APIError_ReturnsErrorContent is a characterization
+// test written ahead of the go-sdk dependency upgrade (issue #10): it pins down
+// the one previously-untested branch of generateKeywordIdeas, confirming a
+// Google Ads API failure surfaces as a tool error result (JSON {"error": ...}
+// text content) rather than a Go/protocol-level error.
+func TestGenerateKeywordIdeas_APIError_ReturnsErrorContent(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error": "boom"}`))
+	}))
+	defer srv.Close()
+
+	client := keywordplanner.NewTestClient("dev-token", "123", "", srv.URL, srv.Client())
+
+	result, _, err := generateKeywordIdeas(context.Background(), client, generateKeywordIdeasInput{SeedKeywords: []string{"x"}})
+	if err != nil {
+		t.Fatalf("unexpected protocol error: %v", err)
+	}
+
+	text := result.Content[0].(*mcp.TextContent).Text
+	if !strings.Contains(text, "generating keyword ideas:") {
+		t.Errorf("result text = %q, want it to mention %q", text, "generating keyword ideas:")
+	}
+}
+
+// TestGetHistoricalMetrics_Success_ReturnsMarshaledMetrics is a characterization
+// test written ahead of the go-sdk dependency upgrade (issue #10). Before this
+// test, getHistoricalMetrics (the get_historical_metrics tool handler) had 0%
+// coverage: nothing exercised its mcp.CallToolResult/mcp.TextContent
+// construction, so a migration-induced regression here would have gone
+// completely unnoticed.
+func TestGetHistoricalMetrics_Success_ReturnsMarshaledMetrics(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"metrics": [{
+				"text": "dependency injection",
+				"keywordMetrics": {
+					"avgMonthlySearches": "1000",
+					"competition": "MEDIUM",
+					"competitionIndex": 50,
+					"lowTopOfPageBidMicros": "100000",
+					"highTopOfPageBidMicros": "500000",
+					"monthlySearchVolumes": []
+				}
+			}]
+		}`))
+	}))
+	defer srv.Close()
+
+	client := keywordplanner.NewTestClient("dev-token", "123", "", srv.URL, srv.Client())
+
+	result, _, err := getHistoricalMetrics(context.Background(), client, getHistoricalMetricsInput{Keywords: []string{"dependency injection"}})
+	if err != nil {
+		t.Fatalf("unexpected protocol error: %v", err)
+	}
+
+	text := result.Content[0].(*mcp.TextContent).Text
+	var parsed keywordplanner.HistoricalMetricsResponse
+	if err := json.Unmarshal([]byte(text), &parsed); err != nil {
+		t.Fatalf("failed to parse result content: %v", err)
+	}
+	if parsed.Count != 1 {
+		t.Errorf("Count = %d, want 1", parsed.Count)
+	}
+	if len(parsed.Keywords) != 1 || parsed.Keywords[0].Text != "dependency injection" {
+		t.Errorf("Keywords = %+v, want one entry for %q", parsed.Keywords, "dependency injection")
+	}
+}
+
+// TestGetHistoricalMetrics_APIError_ReturnsErrorContent verifies a Google Ads
+// API failure surfaces as a tool error result, not a Go/protocol-level error --
+// mirroring the same already-proven pattern for generate_keyword_ideas.
+func TestGetHistoricalMetrics_APIError_ReturnsErrorContent(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error": "boom"}`))
+	}))
+	defer srv.Close()
+
+	client := keywordplanner.NewTestClient("dev-token", "123", "", srv.URL, srv.Client())
+
+	result, _, err := getHistoricalMetrics(context.Background(), client, getHistoricalMetricsInput{Keywords: []string{"x"}})
+	if err != nil {
+		t.Fatalf("unexpected protocol error: %v", err)
+	}
+
+	text := result.Content[0].(*mcp.TextContent).Text
+	if !strings.Contains(text, "getting historical metrics:") {
+		t.Errorf("result text = %q, want it to mention %q", text, "getting historical metrics:")
+	}
+}
+
+// TestGetKeywordForecast_Success_ReturnsMarshaledForecast is a characterization
+// test written ahead of the go-sdk dependency upgrade (issue #10). Before this
+// test, getKeywordForecast (the get_keyword_forecast tool handler) had 0%
+// coverage, for the same reason as getHistoricalMetrics above. It also
+// confirms the default-forecast-window/default-CPC behavior survives the
+// handler's JSON round-trip, not just the internal client call.
+func TestGetKeywordForecast_Success_ReturnsMarshaledForecast(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"adGroupForecastMetrics": [{
+				"keywordForecastMetrics": [{
+					"keyword": {"text": "dependency injection", "matchType": "BROAD"},
+					"metrics": {"impressions": 1000, "clicks": 50, "costMicros": 500000, "ctr": 0.05}
+				}]
+			}]
+		}`))
+	}))
+	defer srv.Close()
+
+	client := keywordplanner.NewTestClient("dev-token", "123", "", srv.URL, srv.Client())
+
+	result, _, err := getKeywordForecast(context.Background(), client, getKeywordForecastInput{Keywords: []string{"dependency injection"}})
+	if err != nil {
+		t.Fatalf("unexpected protocol error: %v", err)
+	}
+
+	text := result.Content[0].(*mcp.TextContent).Text
+	var parsed keywordplanner.ForecastResponse
+	if err := json.Unmarshal([]byte(text), &parsed); err != nil {
+		t.Fatalf("failed to parse result content: %v", err)
+	}
+	if len(parsed.Keywords) != 1 || parsed.Keywords[0].Text != "dependency injection" {
+		t.Errorf("Keywords = %+v, want one entry for %q", parsed.Keywords, "dependency injection")
+	}
+	if parsed.ForecastDays != 30 {
+		t.Errorf("ForecastDays = %d, want default of 30", parsed.ForecastDays)
+	}
+	if parsed.MaxCPCMicros != 1_000_000 {
+		t.Errorf("MaxCPCMicros = %d, want default of 1,000,000", parsed.MaxCPCMicros)
+	}
+}
+
+// TestGetKeywordForecast_APIError_ReturnsErrorContent verifies a Google Ads API
+// failure surfaces as a tool error result, not a Go/protocol-level error.
+func TestGetKeywordForecast_APIError_ReturnsErrorContent(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error": "boom"}`))
+	}))
+	defer srv.Close()
+
+	client := keywordplanner.NewTestClient("dev-token", "123", "", srv.URL, srv.Client())
+
+	result, _, err := getKeywordForecast(context.Background(), client, getKeywordForecastInput{Keywords: []string{"x"}})
+	if err != nil {
+		t.Fatalf("unexpected protocol error: %v", err)
+	}
+
+	text := result.Content[0].(*mcp.TextContent).Text
+	if !strings.Contains(text, "getting keyword forecast:") {
+		t.Errorf("result text = %q, want it to mention %q", text, "getting keyword forecast:")
+	}
+}
+
+// TestNewServer_CallHistoricalMetricsTool_ViaRealSession confirms the
+// get_historical_metrics tool, as actually registered by newServer (not just
+// the underlying Go function called directly), works end-to-end through a
+// real MCP client session. Before this test, the closure newServer registers
+// for this tool was never invoked by anything: argument binding, schema
+// validation, and tool dispatch all have to agree for this to pass.
+func TestNewServer_CallHistoricalMetricsTool_ViaRealSession(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"metrics": []}`))
+	}))
+	defer srv.Close()
+
+	client := keywordplanner.NewTestClient("dev-token", "123", "", srv.URL, srv.Client())
+	mcpServer := newServer(client)
+
+	ctx := context.Background()
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+
+	serverSession, err := mcpServer.Connect(ctx, serverTransport, nil)
+	if err != nil {
+		t.Fatalf("server.Connect: %v", err)
+	}
+	defer serverSession.Close()
+
+	mcpClient := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "test"}, nil)
+	clientSession, err := mcpClient.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatalf("client.Connect: %v", err)
+	}
+	defer clientSession.Close()
+
+	result, err := clientSession.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "get_historical_metrics",
+		Arguments: map[string]any{"keywords": []string{"dependency injection"}},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if result.IsError {
+		t.Errorf("CallTool returned an error result: %+v", result.Content)
+	}
+}
+
+// TestNewServer_CallKeywordForecastTool_ViaRealSession is the
+// get_keyword_forecast equivalent of
+// TestNewServer_CallHistoricalMetricsTool_ViaRealSession.
+func TestNewServer_CallKeywordForecastTool_ViaRealSession(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"adGroupForecastMetrics": []}`))
+	}))
+	defer srv.Close()
+
+	client := keywordplanner.NewTestClient("dev-token", "123", "", srv.URL, srv.Client())
+	mcpServer := newServer(client)
+
+	ctx := context.Background()
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+
+	serverSession, err := mcpServer.Connect(ctx, serverTransport, nil)
+	if err != nil {
+		t.Fatalf("server.Connect: %v", err)
+	}
+	defer serverSession.Close()
+
+	mcpClient := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "test"}, nil)
+	clientSession, err := mcpClient.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatalf("client.Connect: %v", err)
+	}
+	defer clientSession.Close()
+
+	result, err := clientSession.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "get_keyword_forecast",
+		Arguments: map[string]any{"keywords": []string{"dependency injection"}},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if result.IsError {
+		t.Errorf("CallTool returned an error result: %+v", result.Content)
+	}
+}
