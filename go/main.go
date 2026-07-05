@@ -62,6 +62,10 @@ func main() {
 		Version: version,
 	}, nil)
 
+	// Repair a widespread MCP client bug where array-typed arguments arrive
+	// JSON-encoded as a string instead of a genuine array (see stringified_args.go).
+	srv.AddReceivingMiddleware(coerceStringifiedArrayArgs(toolArrayFields))
+
 	mcp.AddTool(srv,
 		&mcp.Tool{
 			Name:        "generate_keyword_ideas",
