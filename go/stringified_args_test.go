@@ -63,12 +63,19 @@ func newTestServerAndClient(t *testing.T, apiResponseBody string, registerMiddle
 // TDD cycle for the "seed_keywords arrives as a JSON-encoded string" bug
 // (google-keyword-planner-mcp#4). It reproduces the exact failure end-to-end,
 // through the real schema-validation pipeline, with no middleware installed.
+//
+// Schema validation failures are surfaced as a normal CallToolResult with
+// IsError=true (via CallToolResult.SetError), not as a protocol-level error --
+// confirmed against go-sdk's toolForErr in server.go. This changed from a
+// protocol-level error in go-sdk v1.5.0, specifically so validation problems
+// are visible to the calling model in-band, the same channel as any other
+// tool error, rather than as an opaque JSON-RPC error.
 func TestGenerateKeywordIdeas_StringifiedSeedKeywords_Fails(t *testing.T) {
 	t.Parallel()
 
 	clientSession := newTestServerAndClient(t, `{"results": []}`, nil)
 
-	_, err := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
+	result, err := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
 		Name: "generate_keyword_ideas",
 		Arguments: map[string]any{
 			// Simulates a client that double-encodes the array into a JSON string
@@ -77,12 +84,16 @@ func TestGenerateKeywordIdeas_StringifiedSeedKeywords_Fails(t *testing.T) {
 			"url":           "https://example.com",
 		},
 	})
-
-	if err == nil {
-		t.Fatal("expected a schema validation error for stringified seed_keywords, got none")
+	if err != nil {
+		t.Fatalf("unexpected protocol-level error: %v", err)
 	}
-	if !strings.Contains(err.Error(), "seed_keywords") {
-		t.Errorf("error = %v, want it to mention seed_keywords", err)
+
+	if !result.IsError {
+		t.Fatal("expected a schema validation error result for stringified seed_keywords, got a successful result")
+	}
+	text := result.Content[0].(*mcp.TextContent).Text
+	if !strings.Contains(text, "seed_keywords") {
+		t.Errorf("result text = %q, want it to mention seed_keywords", text)
 	}
 }
 
