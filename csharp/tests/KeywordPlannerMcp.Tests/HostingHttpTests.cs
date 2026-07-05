@@ -1,3 +1,5 @@
+using System.Net;
+using System.Text;
 using Microsoft.AspNetCore.Builder;
 using ModelContextProtocol.Client;
 using Xunit;
@@ -16,6 +18,33 @@ public sealed class HostingHttpTests
     private const string ClientSecret = "client-secret";
     private const string RefreshToken = "refresh-token";
     private const string CustomerId = "3778350596";
+
+    /// <summary>
+    /// Fake handler that satisfies the OAuth2 token exchange with a canned success
+    /// response, then returns a configurable body for the Google Ads API call itself.
+    /// Used to exercise get_historical_metrics/get_keyword_forecast end-to-end through
+    /// a real MCP session without making any real network call.
+    /// </summary>
+    private sealed class FakeGoogleAdsHandler(string apiResponseBody) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.RequestUri?.Host == "oauth2.googleapis.com")
+            {
+                const string tokenJson = """{"access_token":"fake-token","expires_in":3600}""";
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(tokenJson, Encoding.UTF8, "application/json"),
+                });
+            }
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(apiResponseBody, Encoding.UTF8, "application/json"),
+            });
+        }
+    }
 
     /// <summary>
     /// Hosting.BuildHttpHost binds "0.0.0.0" (all interfaces), which is correct for
@@ -100,5 +129,68 @@ public sealed class HostingHttpTests
             DevToken, ClientId, ClientSecret, RefreshToken, CustomerId, loginCustomerId: null, port: 0);
 
         Assert.Equal("example.com", app.Configuration["AllowedHosts"]);
+    }
+
+    /// <summary>
+    /// Confirms get_historical_metrics -- previously exercised only via direct C#
+    /// method calls in KeywordPlannerToolTests, never through a real MCP session --
+    /// works end-to-end: argument binding (comma-separated "keywords" string),
+    /// [McpServerTool] reflection-based dispatch, and the DI-registered
+    /// KeywordPlannerClient all have to agree for this to pass.
+    /// </summary>
+    [Fact]
+    public async Task BuildHttpHost_CallHistoricalMetricsTool_ViaRealSession_ReturnsSuccessResult()
+    {
+        var handler = new FakeGoogleAdsHandler("""{"metrics":[]}""");
+        await using var app = Hosting.BuildHttpHost(
+            [], DevToken, ClientId, ClientSecret, RefreshToken, CustomerId, loginCustomerId: null, port: 0, handler);
+        await app.StartAsync();
+        try
+        {
+            await using var client = await McpClient.CreateAsync(new HttpClientTransport(new HttpClientTransportOptions
+            {
+                Endpoint = ConnectableUri(app),
+            }));
+
+            var result = await client.CallToolAsync(
+                "get_historical_metrics", new Dictionary<string, object?> { ["keywords"] = "dependency injection" });
+
+            // IsError is nullable: null (unset) on success, true on error.
+            Assert.NotEqual(true, result.IsError);
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
+    }
+
+    /// <summary>
+    /// get_keyword_forecast equivalent of
+    /// BuildHttpHost_CallHistoricalMetricsTool_ViaRealSession_ReturnsSuccessResult.
+    /// </summary>
+    [Fact]
+    public async Task BuildHttpHost_CallKeywordForecastTool_ViaRealSession_ReturnsSuccessResult()
+    {
+        var handler = new FakeGoogleAdsHandler("""{"adGroupForecastMetrics":[]}""");
+        await using var app = Hosting.BuildHttpHost(
+            [], DevToken, ClientId, ClientSecret, RefreshToken, CustomerId, loginCustomerId: null, port: 0, handler);
+        await app.StartAsync();
+        try
+        {
+            await using var client = await McpClient.CreateAsync(new HttpClientTransport(new HttpClientTransportOptions
+            {
+                Endpoint = ConnectableUri(app),
+            }));
+
+            var result = await client.CallToolAsync(
+                "get_keyword_forecast", new Dictionary<string, object?> { ["keywords"] = "dependency injection" });
+
+            // IsError is nullable: null (unset) on success, true on error.
+            Assert.NotEqual(true, result.IsError);
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
     }
 }

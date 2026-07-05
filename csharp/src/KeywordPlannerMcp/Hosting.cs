@@ -28,7 +28,8 @@ internal static class Hosting
         string refreshToken,
         string customerId,
         string? loginCustomerId,
-        int port)
+        int port,
+        HttpMessageHandler? httpMessageHandler = null)
     {
         var builder = WebApplication.CreateBuilder(args);
 
@@ -44,7 +45,8 @@ internal static class Hosting
 
         builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
-        ConfigureCommonServices(builder, developerToken, clientId, clientSecret, refreshToken, customerId, loginCustomerId);
+        ConfigureCommonServices(
+            builder, developerToken, clientId, clientSecret, refreshToken, customerId, loginCustomerId, httpMessageHandler);
 
         builder.Services.AddMcpServer()
             .WithHttpTransport(options =>
@@ -70,15 +72,30 @@ internal static class Hosting
         string clientSecret,
         string refreshToken,
         string customerId,
-        string? loginCustomerId)
+        string? loginCustomerId,
+        HttpMessageHandler? httpMessageHandler = null)
     {
         builder.Logging.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
         builder.Logging.SetMinimumLevel(LogLevel.Warning);
 
-        builder.Services.AddHttpClient<OAuth2TokenProvider>(http =>
+        var oauthClient = builder.Services.AddHttpClient<OAuth2TokenProvider>(http =>
         {
             http.Timeout = TimeSpan.FromSeconds(30);
         });
+
+        var apiClient = builder.Services.AddHttpClient<KeywordPlannerClient>(http =>
+        {
+            http.Timeout = TimeSpan.FromSeconds(30);
+        });
+
+        // Production (Program.cs) never passes a handler, so this is a no-op there;
+        // tests use it to substitute a fake Google Ads / OAuth2 endpoint instead of
+        // making real network calls.
+        if (httpMessageHandler is not null)
+        {
+            oauthClient.ConfigurePrimaryHttpMessageHandler(() => httpMessageHandler);
+            apiClient.ConfigurePrimaryHttpMessageHandler(() => httpMessageHandler);
+        }
 
         builder.Services.AddTransient<OAuth2TokenProvider>(sp =>
         {
@@ -86,11 +103,6 @@ internal static class Hosting
             return new OAuth2TokenProvider(
                 clientId, clientSecret, refreshToken,
                 factory.CreateClient(nameof(OAuth2TokenProvider)));
-        });
-
-        builder.Services.AddHttpClient<KeywordPlannerClient>(http =>
-        {
-            http.Timeout = TimeSpan.FromSeconds(30);
         });
 
         builder.Services.AddTransient<KeywordPlannerClient>(sp =>
