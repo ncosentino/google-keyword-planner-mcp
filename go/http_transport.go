@@ -15,7 +15,21 @@ import (
 // allowedHosts are rejected before reaching the MCP handler.
 func runHTTP(srv *mcp.Server, allowedHosts []string) {
 	port := resolveHTTPPort()
+	protected := buildHTTPHandler(srv, allowedHosts)
 
+	slog.Info("google-keyword-planner-mcp starting",
+		"version", version, "transport", "http", "port", port, "allowed_hosts", allowedHosts)
+	if err := http.ListenAndServe(":"+port, protected); err != nil {
+		slog.Error("server stopped with error", "err", err)
+		os.Exit(1)
+	}
+}
+
+// buildHTTPHandler assembles the full middleware chain runHTTP serves: cross-
+// origin (CSRF) protection, then the Host allow-list, wrapping the MCP
+// Streamable HTTP handler for srv. Extracted so tests exercise this exact
+// composition instead of a hand-rolled approximation of it.
+func buildHTTPHandler(srv *mcp.Server, allowedHosts []string) http.Handler {
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
 		return srv
 	}, &mcp.StreamableHTTPOptions{
@@ -25,14 +39,17 @@ func runHTTP(srv *mcp.Server, allowedHosts []string) {
 		Stateless: true,
 	})
 
-	protected := allowedHostsMiddleware(handler, allowedHosts)
+	// Cross-origin (CSRF) protection rejects browser requests that the Origin/
+	// Sec-Fetch-Site headers identify as genuinely cross-site, while allowing
+	// same-origin browser requests and requests with neither header at all (the
+	// common case for non-browser MCP clients). Wrapped directly with the
+	// stdlib middleware rather than via StreamableHTTPOptions.CrossOriginProtection,
+	// which the SDK itself deprecates in favor of this pattern (see go-sdk's
+	// internal/docs/rough_edges.src.md: "should not have been part of the SDK
+	// API... can be applied as standard HTTP middleware").
+	protection := http.NewCrossOriginProtection()
 
-	slog.Info("google-keyword-planner-mcp starting",
-		"version", version, "transport", "http", "port", port, "allowed_hosts", allowedHosts)
-	if err := http.ListenAndServe(":"+port, protected); err != nil {
-		slog.Error("server stopped with error", "err", err)
-		os.Exit(1)
-	}
+	return allowedHostsMiddleware(protection.Handler(handler), allowedHosts)
 }
 
 // resolveHTTPPort returns the PORT environment variable's value, or "8080" if
