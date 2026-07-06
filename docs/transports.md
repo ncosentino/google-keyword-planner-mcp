@@ -102,12 +102,28 @@ To allow additional hosts (e.g. behind a reverse proxy with a real domain):
 
 ---
 
+## Security: cross-origin (CSRF) protection
+
+=== "Go"
+
+    The Go binary also rejects browser requests that the `Origin`/`Sec-Fetch-Site` headers identify as genuinely cross-site -- e.g. a malicious web page's `fetch()` call against a locally-running instance of this server. This is a different protection than the Host allow-list above: the Host allow-list defends against DNS rebinding (the browser is tricked about *where* it's connecting); this defends against CSRF (a *different* site's page making a request on the user's behalf), and applies regardless of whether the Host header itself is allowed.
+
+    Same-origin browser requests, and any request with neither an `Origin` nor a `Sec-Fetch-Site` header at all (the normal case for non-browser MCP clients -- Claude Desktop's HTTP client, curl, backend scripts), are allowed. Only requests a browser identifies as cross-site are rejected, with `403 Forbidden`. No configuration is required or currently exposed.
+
+    This uses Go's standard library [`http.CrossOriginProtection`](https://pkg.go.dev/net/http#CrossOriginProtection) (stable since Go 1.25).
+
+=== "C#"
+
+    Not yet implemented. ASP.NET Core has no shipped equivalent as of the versions this project currently targets. Tracked in [issue #14](https://github.com/ncosentino/google-keyword-planner-mcp/issues/14).
+
+---
+
 ## What HTTP transport does *not* include
 
 This is a transport flag, not a hosting product. Neither binary bundles:
 
 - A Dockerfile or container image
 - Cloud-provider-specific deployment automation
-- Authentication/authorization in front of the MCP endpoint itself (beyond the Host allow-list above)
+- Authentication/authorization in front of the MCP endpoint itself (beyond the Host allow-list and cross-origin protection above)
 
 If you deploy either binary behind HTTP, you're responsible for TLS termination, authentication, and network exposure -- typically via a reverse proxy or your hosting platform's own ingress layer.
