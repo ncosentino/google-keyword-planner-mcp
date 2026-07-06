@@ -6,7 +6,7 @@ description: Build the Google Keyword Planner MCP server from source using Go or
 
 ## Go
 
-**Requirements:** Go 1.21+
+**Requirements:** Go 1.26+ (matching `go/go.mod`; the `go-sdk` dependency itself requires 1.25+)
 
 ```bash
 cd go
