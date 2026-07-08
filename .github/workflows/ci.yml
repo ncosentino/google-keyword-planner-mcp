@@ -87,10 +87,18 @@ jobs:
       - name: Build documentation
         run: python -m mkdocs build
 
-      - name: Deploy documentation
+      - name: Deploy documentation (GitHub Pages)
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./site
           keep_files: true
+
+      - name: Deploy documentation (Cloudflare Pages)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy site --project-name=google-keyword-planner-mcp --branch=main
