@@ -21,6 +21,7 @@ csharp/**/.vs/
 dist/
 publish/
 site/
+.wrangler/
 
 # Documentation
 __pycache__/

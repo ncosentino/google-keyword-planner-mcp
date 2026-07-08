@@ -1,0 +1,5 @@
+# Cloudflare Pages project configuration.
+# https://developers.cloudflare.com/pages/functions/wrangler-configuration/
+name = "google-keyword-planner-mcp"
+pages_build_output_dir = "site"
+compatibility_date = "2026-07-08"
