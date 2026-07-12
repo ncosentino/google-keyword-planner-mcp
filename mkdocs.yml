@@ -54,6 +54,7 @@ nav:
   - Setup by Tool: setup-by-tool.md
   - Configuration: configuration.md
   - Transports: transports.md
+  - Shared Service: shared-service.md
   - Troubleshooting: troubleshooting.md
   - Go vs C#: implementations.md
   - Building from Source: building.md

@@ -54,4 +54,17 @@ cd csharp && dotnet test
 
 ## HTTP Transport
 
-No special build steps are needed for HTTP transport support -- it's a runtime flag (`--transport http`), not a build-time option, in both languages. See [Transports](transports.md) for usage.
+No special build steps are needed for HTTP transport support.
+
+```bash
+cd go
+go run . --transport http --listen-address 127.0.0.1 --port 8082
+```
+
+```bash
+cd csharp
+dotnet run --project src/KeywordPlannerMcp -- \
+  --transport http --listen-address 127.0.0.1 --port 8082
+```
+
+Both serve MCP at `/mcp` and health metadata at `/health`.

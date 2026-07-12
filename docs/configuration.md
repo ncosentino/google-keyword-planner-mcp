@@ -64,4 +64,22 @@ Dashes are stripped automatically before the API call.
 
 ## Transport
 
-Credentials resolve the same way regardless of transport. See **[Transports](transports.md)** for running the server over HTTP instead of the default stdio, including the `--transport`/`--allowed-hosts` flags and their security defaults.
+Credentials resolve the same way regardless of transport. See
+**[Transports](transports.md)** for running one shared HTTP service.
+
+## HTTP host
+
+```bash
+./kwp-mcp-go-linux-amd64 \
+  --transport http \
+  --listen-address 127.0.0.1 \
+  --port 8082
+```
+
+- `--listen-address` overrides `MCP_LISTEN_ADDRESS`; the default is `127.0.0.1`.
+- `--port` overrides `PORT`; the default is `8080`.
+- MCP is served at `/mcp`.
+- Health metadata is served at `/health`.
+
+Go accepts a comma-separated `--allowed-hosts` list. C# uses the standard
+semicolon-separated ASP.NET Core `AllowedHosts` setting.

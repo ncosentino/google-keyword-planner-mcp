@@ -175,17 +175,30 @@ See [Configuration](configuration.md) for the full resolution order.
 
 ## Using HTTP Transport
 
-All the configurations above launch the binary as a subprocess over stdio. If your MCP client connects over HTTP instead (e.g. a remote deployment), point it at the server's URL rather than a local command:
+Start one server process:
+
+```bash
+./kwp-mcp-go-linux-amd64 \
+  --transport http \
+  --listen-address 127.0.0.1 \
+  --port 8082
+```
+
+Then point every local agent session at it:
 
 ```json
 {
   "mcpServers": {
     "keyword-planner": {
       "type": "http",
-      "url": "http://localhost:8080/"
+      "url": "http://127.0.0.1:8082/mcp",
+      "tools": ["*"]
     }
   }
 }
 ```
+
+See [Shared Service](shared-service.md) for credential, lifecycle, and startup
+management.
 
 The server itself still needs `--transport http` and its credentials -- see **[Transports](transports.md)** for the full flag reference and Host allow-list security defaults.

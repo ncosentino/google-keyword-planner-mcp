@@ -249,28 +249,39 @@ GOOGLE_ADS_LOGIN_CUSTOMER_ID=your-manager-account-id
 
 ## Transports
 
-Both binaries default to **stdio** -- everything above uses it. For remote/networked deployments, pass `--transport http` to serve MCP over HTTP instead:
+Both binaries default to **stdio** and also support one shared Streamable HTTP
+service for every agent session:
 
 ```bash
-./kwp-mcp-go-linux-amd64 --transport http --developer-token ... --client-id ... # etc.
+./kwp-mcp-go-linux-amd64 \
+  --transport http \
+  --listen-address 127.0.0.1 \
+  --port 8082
 ```
 
-The server listens on the `PORT` environment variable (default `8080`). Point an HTTP-capable MCP client at the server instead of launching it as a subprocess:
+Keep the Google Ads credentials in the service environment or a `.env` file
+beside the binary. MCP is served at `/mcp`; supervisors can probe `/health`.
 
 ```json
 {
   "mcpServers": {
     "keyword-planner": {
       "type": "http",
-      "url": "http://localhost:8080/"
+      "url": "http://127.0.0.1:8082/mcp",
+      "tools": ["*"]
     }
   }
 }
 ```
 
-**Security default:** neither Go's `net/http` nor C#'s Kestrel validate the `Host` header by default, which would otherwise allow DNS rebinding against a locally-bound server. Both binaries reject any `Host` header outside `localhost`, `127.0.0.1`, `[::1]` unless you explicitly widen the allow-list -- `--allowed-hosts` (comma-separated) for Go, the standard `AllowedHosts` ASP.NET Core config key (semicolon-separated, settable via `--AllowedHosts` on the command line) for C#.
+Both implementations default to loopback, validate Host and Origin boundaries,
+limit request sizes and HTTP timeouts, and run statelessly without session
+affinity.
 
-This is a transport flag, not a hosting product -- no Dockerfile, no cloud-provider automation, and no authentication in front of the MCP endpoint beyond the Host allow-list. TLS termination and network exposure are your responsibility if you deploy either binary over HTTP. See the [Transports doc](https://github.devleader.ca/google-keyword-planner-mcp/transports/) for the full reference.
+The HTTP host does not authenticate ordinary MCP callers. Keep it on loopback
+or place it behind TLS and an authenticated reverse proxy. See
+[Shared Service](https://github.devleader.ca/google-keyword-planner-mcp/shared-service/)
+and [Transports](https://github.devleader.ca/google-keyword-planner-mcp/transports/).
 
 ---
 
