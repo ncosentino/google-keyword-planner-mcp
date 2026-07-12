@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,240 +11,370 @@ import (
 	"github.com/ncosentino/google-keyword-planner-mcp/go/internal/keywordplanner"
 )
 
-// TestAllowedHostsMiddleware_AllowedHost_PassesThrough verifies a request whose
-// Host header matches the allow-list reaches the wrapped handler.
-func TestAllowedHostsMiddleware_AllowedHost_PassesThrough(t *testing.T) {
+func TestAllowedHostsMiddleware(t *testing.T) {
 	t.Parallel()
 
-	var reached bool
-	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		reached = true
-		w.WriteHeader(http.StatusOK)
-	})
-
-	handler := allowedHostsMiddleware(next, []string{"localhost", "127.0.0.1"})
-
-	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8080/", nil)
-	req.Host = "127.0.0.1:8080"
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	if !reached {
-		t.Error("request with allowed host must reach the wrapped handler")
+	tests := []struct {
+		name       string
+		host       string
+		wantStatus int
+		wantCalled bool
+	}{
+		{name: "allowed", host: "127.0.0.1:8080", wantStatus: http.StatusOK, wantCalled: true},
+		{name: "rejected", host: "evil.example", wantStatus: http.StatusForbidden, wantCalled: false},
 	}
-	if rec.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			called := false
+			handler := allowedHostsMiddleware(
+				http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+					called = true
+					writer.WriteHeader(http.StatusOK)
+				}),
+				[]string{"127.0.0.1"},
+			)
+			request := httptest.NewRequest(http.MethodPost, "http://127.0.0.1/", nil)
+			request.Host = test.host
+			recorder := httptest.NewRecorder()
+
+			handler.ServeHTTP(recorder, request)
+
+			if recorder.Code != test.wantStatus {
+				t.Errorf("status = %d, want %d", recorder.Code, test.wantStatus)
+			}
+			if called != test.wantCalled {
+				t.Errorf("handler called = %v, want %v", called, test.wantCalled)
+			}
+		})
 	}
 }
 
-// TestAllowedHostsMiddleware_DisallowedHost_Rejected verifies a request whose
-// Host header is absent from the allow-list is rejected before the wrapped
-// handler runs, defending against DNS rebinding.
-func TestAllowedHostsMiddleware_DisallowedHost_Rejected(t *testing.T) {
-	t.Parallel()
-
-	var reached bool
-	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		reached = true
-		w.WriteHeader(http.StatusOK)
-	})
-
-	handler := allowedHostsMiddleware(next, []string{"localhost", "127.0.0.1"})
-
-	req := httptest.NewRequest(http.MethodPost, "http://evil.example.com/", nil)
-	req.Host = "evil.example.com"
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	if reached {
-		t.Error("request with disallowed host must not reach the wrapped handler")
-	}
-	if rec.Code != http.StatusForbidden {
-		t.Errorf("status = %d, want %d", rec.Code, http.StatusForbidden)
-	}
-}
-
-// TestHTTPTransport_ServesRealSession exercises the full HTTP transport stack
-// via buildHTTPHandler (the same composition runHTTP serves in production:
-// cross-origin protection wrapping allowedHostsMiddleware wrapping
-// mcp.NewStreamableHTTPHandler wrapping the real newServer(client)) through a
-// real MCP client connecting over HTTP (minus the actual port bind, since the
-// test uses httptest.Server instead of http.ListenAndServe).
 func TestHTTPTransport_ServesRealSession(t *testing.T) {
 	t.Parallel()
 
-	apiSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"results": []}`))
+	apiServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"results":[]}`))
 	}))
-	defer apiSrv.Close()
+	defer apiServer.Close()
 
-	client := keywordplanner.NewTestClient("dev-token", "123", "", apiSrv.URL, apiSrv.Client())
-	srv := newServer(client)
-
-	httpSrv := httptest.NewServer(buildHTTPHandler(srv, []string{"127.0.0.1"}))
-	defer httpSrv.Close()
+	client := keywordplanner.NewTestClient(
+		"dev-token",
+		"123",
+		"",
+		apiServer.URL,
+		apiServer.Client(),
+	)
+	server := newServer(client)
+	httpServer := httptest.NewServer(buildHTTPHandler(server, []string{"127.0.0.1"}))
+	defer httpServer.Close()
 
 	ctx := context.Background()
 	mcpClient := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "test"}, nil)
-	session, err := mcpClient.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: httpSrv.URL}, nil)
+	session, err := mcpClient.Connect(
+		ctx,
+		&mcp.StreamableClientTransport{Endpoint: httpServer.URL + mcpPath},
+		nil,
+	)
 	if err != nil {
-		t.Fatalf("client.Connect over HTTP: %v", err)
+		t.Fatalf("Connect: %v", err)
 	}
 	defer session.Close()
 
-	toolsResult, err := session.ListTools(ctx, nil)
+	tools, err := session.ListTools(ctx, nil)
 	if err != nil {
-		t.Fatalf("ListTools over HTTP: %v", err)
+		t.Fatalf("ListTools: %v", err)
 	}
-	if len(toolsResult.Tools) != 3 {
-		t.Errorf("got %d tools over HTTP, want 3", len(toolsResult.Tools))
+	if len(tools.Tools) != 3 {
+		t.Errorf("tools = %d, want 3", len(tools.Tools))
 	}
 
-	callResult, err := session.CallTool(ctx, &mcp.CallToolParams{
-		Name:      "generate_keyword_ideas",
-		Arguments: map[string]any{"seed_keywords": []string{"go programming"}},
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "generate_keyword_ideas",
+		Arguments: map[string]any{
+			"seed_keywords": []string{"go programming"},
+		},
 	})
 	if err != nil {
-		t.Fatalf("CallTool over HTTP: %v", err)
+		t.Fatalf("CallTool: %v", err)
 	}
-	if callResult.IsError {
-		t.Errorf("CallTool over HTTP returned an error result: %+v", callResult.Content)
+	if result.IsError {
+		t.Errorf("CallTool returned error content: %+v", result.Content)
 	}
 }
 
-// TestHTTPTransport_RejectsDisallowedHost verifies the allow-list is actually
-// wired into the served stack, not just unit-testable in isolation: a request
-// carrying a disallowed Host header never reaches the MCP handler at all.
-func TestHTTPTransport_RejectsDisallowedHost(t *testing.T) {
+func TestHTTPTransport_ServesHealth(t *testing.T) {
 	t.Parallel()
 
-	client := keywordplanner.NewTestClient("dev-token", "123", "", "http://unused.invalid", http.DefaultClient)
-	srv := newServer(client)
+	server := newServer(keywordplanner.NewTestClient(
+		"dev-token",
+		"123",
+		"",
+		"http://unused.invalid",
+		http.DefaultClient,
+	))
+	httpServer := httptest.NewServer(buildHTTPHandler(server, []string{"127.0.0.1"}))
+	defer httpServer.Close()
 
-	httpSrv := httptest.NewServer(buildHTTPHandler(srv, []string{"only-this-host-is-allowed"}))
-	defer httpSrv.Close()
-
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, httpSrv.URL, nil)
+	request, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		httpServer.URL+healthPath,
+		nil,
+	)
 	if err != nil {
 		t.Fatalf("NewRequestWithContext: %v", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
+	response, err := http.DefaultClient.Do(request)
 	if err != nil {
-		t.Fatalf("POST: %v", err)
+		t.Fatalf("GET health: %v", err)
 	}
-	defer resp.Body.Close()
+	defer response.Body.Close()
 
-	if resp.StatusCode != http.StatusForbidden {
-		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusForbidden)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", response.StatusCode)
+	}
+	var health healthResponse
+	if err := json.NewDecoder(response.Body).Decode(&health); err != nil {
+		t.Fatalf("decode health: %v", err)
+	}
+	if health.Status != "ok" || health.Service != "google-keyword-planner-mcp" {
+		t.Errorf("health = %+v", health)
 	}
 }
 
-// TestHTTPTransport_RejectsForgedCrossSiteOrigin verifies cross-origin (CSRF)
-// protection is actually wired into the served stack: a request with a
-// forged, mismatched Origin header and a browser-style Sec-Fetch-Site header
-// is rejected even though its Host header is on the allow-list -- simulating
-// a malicious web page's fetch() call against a locally-running instance of
-// this server, which allowedHostsMiddleware alone (a Host-header check) does
-// not defend against.
 func TestHTTPTransport_RejectsForgedCrossSiteOrigin(t *testing.T) {
 	t.Parallel()
 
-	client := keywordplanner.NewTestClient("dev-token", "123", "", "http://unused.invalid", http.DefaultClient)
-	srv := newServer(client)
+	server := newServer(keywordplanner.NewTestClient(
+		"dev-token",
+		"123",
+		"",
+		"http://unused.invalid",
+		http.DefaultClient,
+	))
+	httpServer := httptest.NewServer(buildHTTPHandler(server, []string{"127.0.0.1"}))
+	defer httpServer.Close()
 
-	httpSrv := httptest.NewServer(buildHTTPHandler(srv, []string{"127.0.0.1"}))
-	defer httpSrv.Close()
-
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, httpSrv.URL, nil)
+	request, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		httpServer.URL+mcpPath,
+		nil,
+	)
 	if err != nil {
 		t.Fatalf("NewRequestWithContext: %v", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Origin", "https://evil.example.com")
-	req.Header.Set("Sec-Fetch-Site", "cross-site")
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Origin", "https://evil.example")
+	request.Header.Set("Sec-Fetch-Site", "cross-site")
 
-	resp, err := http.DefaultClient.Do(req)
+	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		t.Fatalf("POST: %v", err)
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusForbidden {
-		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusForbidden)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Errorf("status = %d, want 403", response.StatusCode)
 	}
 }
 
-// TestHTTPTransport_AllowsSameOriginRequest verifies cross-origin protection
-// does not block legitimate same-origin browser requests: a request whose
-// Sec-Fetch-Site header says "same-origin" reaches the MCP handler (and gets
-// past its own Content-Type/session validation instead of being stopped
-// earlier by a 403).
-func TestHTTPTransport_AllowsSameOriginRequest(t *testing.T) {
+func TestHTTPTransport_ShutdownRequiresLoopbackBearerToken(t *testing.T) {
 	t.Parallel()
 
-	client := keywordplanner.NewTestClient("dev-token", "123", "", "http://unused.invalid", http.DefaultClient)
-	srv := newServer(client)
+	shutdownRequested := false
+	handler := buildHTTPHandlerWithShutdown(
+		newServer(keywordplanner.NewTestClient(
+			"dev-token",
+			"123",
+			"",
+			"http://unused.invalid",
+			http.DefaultClient,
+		)),
+		[]string{"127.0.0.1"},
+		"secret-token",
+		func() { shutdownRequested = true },
+	)
 
-	httpSrv := httptest.NewServer(buildHTTPHandler(srv, []string{"127.0.0.1"}))
-	defer httpSrv.Close()
-
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, httpSrv.URL, nil)
-	if err != nil {
-		t.Fatalf("NewRequestWithContext: %v", err)
+	tests := []struct {
+		name       string
+		remoteAddr string
+		token      string
+		wantStatus int
+		wantStop   bool
+	}{
+		{
+			name:       "remote caller",
+			remoteAddr: "192.0.2.10:1234",
+			token:      "secret-token",
+			wantStatus: http.StatusForbidden,
+		},
+		{
+			name:       "wrong token",
+			remoteAddr: "127.0.0.1:1234",
+			token:      "wrong-token",
+			wantStatus: http.StatusUnauthorized,
+		},
+		{
+			name:       "authorized loopback caller",
+			remoteAddr: "127.0.0.1:1234",
+			token:      "secret-token",
+			wantStatus: http.StatusAccepted,
+			wantStop:   true,
+		},
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Sec-Fetch-Site", "same-origin")
 
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("POST: %v", err)
-	}
-	defer resp.Body.Close()
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			shutdownRequested = false
+			request := httptest.NewRequest(
+				http.MethodPost,
+				"http://127.0.0.1"+shutdownPath,
+				nil,
+			)
+			request.Host = "127.0.0.1"
+			request.RemoteAddr = test.remoteAddr
+			request.Header.Set("Authorization", "Bearer "+test.token)
+			recorder := httptest.NewRecorder()
 
-	if resp.StatusCode == http.StatusForbidden {
-		t.Errorf("status = %d, same-origin request must not be rejected by cross-origin protection", resp.StatusCode)
+			handler.ServeHTTP(recorder, request)
+
+			if recorder.Code != test.wantStatus {
+				t.Errorf("status = %d, want %d", recorder.Code, test.wantStatus)
+			}
+			if shutdownRequested != test.wantStop {
+				t.Errorf("shutdown requested = %v, want %v", shutdownRequested, test.wantStop)
+			}
+		})
 	}
 }
 
-// TestResolveHTTPPort_UsesEnvVarWhenSet confirms PORT, when set, takes
-// precedence -- required for platforms (e.g. Cloud Run) that assign it
-// automatically.
-func TestResolveHTTPPort_UsesEnvVarWhenSet(t *testing.T) {
+func TestNewHTTPServer_DefaultsToLoopbackAddress(t *testing.T) {
+	t.Parallel()
+
+	server := newHTTPServer(
+		newServer(keywordplanner.NewTestClient(
+			"dev-token",
+			"123",
+			"",
+			"http://unused.invalid",
+			http.DefaultClient,
+		)),
+		httpServerOptions{
+			ListenAddress: defaultHTTPListenAddress,
+			Port:          defaultHTTPPort,
+			AllowedHosts:  []string{"127.0.0.1"},
+		},
+		nil,
+	)
+	if server.Addr != "127.0.0.1:8080" {
+		t.Errorf("address = %q, want 127.0.0.1:8080", server.Addr)
+	}
+	if server.ReadHeaderTimeout <= 0 || server.IdleTimeout <= 0 {
+		t.Errorf(
+			"timeouts = read header %s, idle %s; both must be positive",
+			server.ReadHeaderTimeout,
+			server.IdleTimeout,
+		)
+	}
+}
+
+func TestResolveHTTPPort(t *testing.T) {
 	t.Setenv("PORT", "9999")
-
-	if got := resolveHTTPPort(); got != "9999" {
-		t.Errorf("resolveHTTPPort() = %q, want %q", got, "9999")
+	got, err := resolveHTTPPort(0, false)
+	if err != nil {
+		t.Fatalf("resolveHTTPPort: %v", err)
 	}
-}
+	if got != 9999 {
+		t.Errorf("port = %d, want 9999", got)
+	}
 
-// TestResolveHTTPPort_DefaultsTo8080WhenUnset confirms the documented default
-// of 8080 applies when PORT is unset, forced deterministically via t.Setenv
-// rather than relying on the ambient environment not already having PORT set.
-func TestResolveHTTPPort_DefaultsTo8080WhenUnset(t *testing.T) {
 	t.Setenv("PORT", "")
+	got, err = resolveHTTPPort(0, false)
+	if err != nil {
+		t.Fatalf("resolveHTTPPort: %v", err)
+	}
+	if got != defaultHTTPPort {
+		t.Errorf("port = %d, want %d", got, defaultHTTPPort)
+	}
 
-	if got := resolveHTTPPort(); got != "8080" {
-		t.Errorf("resolveHTTPPort() = %q, want %q", got, "8080")
+	got, err = resolveHTTPPort(9000, true)
+	if err != nil {
+		t.Fatalf("resolveHTTPPort flag: %v", err)
+	}
+	if got != 9000 {
+		t.Errorf("flag port = %d, want 9000", got)
+	}
+
+	if _, err := resolveHTTPPort(0, true); err == nil {
+		t.Fatal("explicit zero port returned nil error")
 	}
 }
 
-// TestSplitAndTrim_ParsesCommaSeparatedList confirms the --allowed-hosts flag
-// value is parsed into a clean slice: trimmed, with empty entries dropped.
-func TestSplitAndTrim_ParsesCommaSeparatedList(t *testing.T) {
+func TestResolveHTTPPort_RejectsInvalidEnvironmentValue(t *testing.T) {
+	t.Setenv("PORT", "invalid")
+	if _, err := resolveHTTPPort(0, false); err == nil {
+		t.Fatal("resolveHTTPPort returned nil error")
+	}
+}
+
+func TestResolveHTTPListenAddress(t *testing.T) {
+	t.Setenv("MCP_LISTEN_ADDRESS", "192.0.2.10")
+	got, err := resolveHTTPListenAddress("", false)
+	if err != nil {
+		t.Fatalf("resolveHTTPListenAddress: %v", err)
+	}
+	if got != "192.0.2.10" {
+		t.Errorf("address = %q, want 192.0.2.10", got)
+	}
+	got, err = resolveHTTPListenAddress("127.0.0.2", true)
+	if err != nil {
+		t.Fatalf("resolveHTTPListenAddress flag: %v", err)
+	}
+	if got != "127.0.0.2" {
+		t.Errorf("flag address = %q, want 127.0.0.2", got)
+	}
+	if _, err := resolveHTTPListenAddress("", true); err == nil {
+		t.Fatal("explicit empty address returned nil error")
+	}
+}
+
+func TestAllowedHostsMiddleware_NormalizesIPv6(t *testing.T) {
+	t.Parallel()
+
+	called := false
+	handler := allowedHostsMiddleware(
+		http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			called = true
+			writer.WriteHeader(http.StatusOK)
+		}),
+		[]string{"[::1]"},
+	)
+	request := httptest.NewRequest(http.MethodGet, "http://[::1]/health", nil)
+	request.Host = "[::1]:8080"
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK || !called {
+		t.Errorf("status = %d, called = %v; want 200 and true", recorder.Code, called)
+	}
+}
+
+func TestSplitAndTrim(t *testing.T) {
 	t.Parallel()
 
 	got := splitAndTrim("localhost, 127.0.0.1 ,, [::1]")
 	want := []string{"localhost", "127.0.0.1", "[::1]"}
-
 	if len(got) != len(want) {
-		t.Fatalf("splitAndTrim(...) = %v, want %v", got, want)
+		t.Fatalf("got %v, want %v", got, want)
 	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("splitAndTrim(...)[%d] = %q, want %q", i, got[i], want[i])
+	for index := range want {
+		if got[index] != want[index] {
+			t.Errorf("got[%d] = %q, want %q", index, got[index], want[index])
 		}
 	}
 }

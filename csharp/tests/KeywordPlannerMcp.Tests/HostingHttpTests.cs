@@ -1,6 +1,8 @@
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using ModelContextProtocol.Client;
 using Xunit;
 
@@ -47,15 +49,16 @@ public sealed class HostingHttpTests
     }
 
     /// <summary>
-    /// Hosting.BuildHttpHost binds "0.0.0.0" (all interfaces), which is correct for
-    /// production but isn't itself a connectable target address -- app.Urls reports
-    /// back the bind address verbatim. Tests connecting from the same machine need
-    /// to target loopback explicitly, on whatever port Kestrel actually chose.
+    /// Returns a loopback URL for the requested endpoint on Kestrel's selected port.
     /// </summary>
-    private static Uri ConnectableUri(WebApplication app)
+    private static Uri ConnectableUri(WebApplication app, string path = Hosting.McpPath)
     {
         var bound = new Uri(app.Urls.First());
-        return new UriBuilder(bound) { Host = "127.0.0.1" }.Uri;
+        return new UriBuilder(bound)
+        {
+            Host = ServerOptions.DefaultListenAddress,
+            Path = path,
+        }.Uri;
     }
 
     [Fact]
@@ -119,6 +122,48 @@ public sealed class HostingHttpTests
             [], DevToken, ClientId, ClientSecret, RefreshToken, CustomerId, loginCustomerId: null, port: 0);
 
         Assert.Equal(Hosting.DefaultAllowedHosts, app.Configuration["AllowedHosts"]);
+    }
+
+    [Fact]
+    public async Task BuildHttpHost_DefaultsToLoopbackBinding()
+    {
+        await using var app = Hosting.BuildHttpHost(
+            [], DevToken, ClientId, ClientSecret, RefreshToken, CustomerId, loginCustomerId: null, port: 0);
+        await app.StartAsync();
+        try
+        {
+            var bound = new Uri(app.Urls.First());
+            Assert.Equal(ServerOptions.DefaultListenAddress, bound.Host);
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task BuildHttpHost_ServesHealth()
+    {
+        await using var app = Hosting.BuildHttpHost(
+            [], DevToken, ClientId, ClientSecret, RefreshToken, CustomerId, loginCustomerId: null, port: 0);
+        await app.StartAsync();
+        try
+        {
+            using var httpClient = new HttpClient();
+            using var response = await httpClient.GetAsync(ConnectableUri(app, Hosting.HealthPath));
+            response.EnsureSuccessStatusCode();
+
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.Equal("ok", document.RootElement.GetProperty("status").GetString());
+            Assert.Equal(
+                "google-keyword-planner-mcp",
+                document.RootElement.GetProperty("service").GetString());
+            Assert.Equal("http", document.RootElement.GetProperty("transport").GetString());
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
     }
 
     [Fact]
@@ -192,5 +237,179 @@ public sealed class HostingHttpTests
         {
             await app.StopAsync();
         }
+    }
+
+    [Fact]
+    public async Task BuildHttpHost_RejectsCrossSiteOrigin()
+    {
+        await using var app = Hosting.BuildHttpHost(
+            [], DevToken, ClientId, ClientSecret, RefreshToken, CustomerId, loginCustomerId: null, port: 0);
+        await app.StartAsync();
+        try
+        {
+            using var httpClient = new HttpClient();
+            using var request = new HttpRequestMessage(
+                HttpMethod.Post,
+                ConnectableUri(app, Hosting.McpPath));
+            request.Headers.Add("Origin", "https://evil.example");
+            request.Content = new StringContent("{}", Encoding.UTF8, "application/json");
+
+            using var response = await httpClient.SendAsync(request);
+
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task BuildHttpHost_RejectsCrossSiteOriginWithTrailingSlash()
+    {
+        await using var app = Hosting.BuildHttpHost(
+            [], DevToken, ClientId, ClientSecret, RefreshToken, CustomerId, loginCustomerId: null, port: 0);
+        await app.StartAsync();
+        try
+        {
+            using var httpClient = new HttpClient();
+            using var request = new HttpRequestMessage(
+                HttpMethod.Post,
+                ConnectableUri(app, Hosting.McpPath + "/"));
+            request.Headers.Add("Origin", "https://evil.example");
+            request.Content = new StringContent("{}", Encoding.UTF8, "application/json");
+
+            using var response = await httpClient.SendAsync(request);
+
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
+    }
+
+    [Fact]
+    public void IsCrossOriginRequestAllowed_AcceptsSameOrigin()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Method = HttpMethods.Post;
+        context.Request.Scheme = "http";
+        context.Request.Host = new HostString("127.0.0.1", 8080);
+        context.Request.Headers.Origin = "http://127.0.0.1:8080";
+
+        Assert.True(Hosting.IsCrossOriginRequestAllowed(context.Request));
+    }
+
+    [Fact]
+    public async Task BuildHttpHost_RejectsCrossSiteFetchMetadataWithoutOrigin()
+    {
+        await using var app = Hosting.BuildHttpHost(
+            [], DevToken, ClientId, ClientSecret, RefreshToken, CustomerId, loginCustomerId: null, port: 0);
+        await app.StartAsync();
+        try
+        {
+            using var httpClient = new HttpClient();
+            using var request = new HttpRequestMessage(
+                HttpMethod.Post,
+                ConnectableUri(app, Hosting.McpPath));
+            request.Headers.Add("Sec-Fetch-Site", "cross-site");
+            request.Content = new StringContent("{}", Encoding.UTF8, "application/json");
+
+            using var response = await httpClient.SendAsync(request);
+
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task BuildHttpHost_AllowsSafeCrossSiteMethod()
+    {
+        await using var app = Hosting.BuildHttpHost(
+            [], DevToken, ClientId, ClientSecret, RefreshToken, CustomerId, loginCustomerId: null, port: 0);
+        await app.StartAsync();
+        try
+        {
+            using var httpClient = new HttpClient();
+            using var request = new HttpRequestMessage(
+                HttpMethod.Get,
+                ConnectableUri(app, Hosting.McpPath));
+            request.Headers.Add("Sec-Fetch-Site", "cross-site");
+            request.Headers.Add("Origin", "https://evil.example");
+
+            using var response = await httpClient.SendAsync(request);
+
+            Assert.NotEqual(HttpStatusCode.Forbidden, response.StatusCode);
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task BuildHttpHost_RejectsDisallowedHost()
+    {
+        await using var app = Hosting.BuildHttpHost(
+            [], DevToken, ClientId, ClientSecret, RefreshToken, CustomerId, loginCustomerId: null, port: 0);
+        await app.StartAsync();
+        try
+        {
+            using var httpClient = new HttpClient();
+            using var request = new HttpRequestMessage(
+                HttpMethod.Get,
+                ConnectableUri(app, Hosting.HealthPath));
+            request.Headers.Host = "evil.example";
+
+            using var response = await httpClient.SendAsync(request);
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        }
+        finally
+        {
+            await app.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task BuildHttpHost_ShutdownRequiresBearerToken()
+    {
+        await using var app = Hosting.BuildHttpHost(
+            [],
+            DevToken,
+            ClientId,
+            ClientSecret,
+            RefreshToken,
+            CustomerId,
+            loginCustomerId: null,
+            port: 0,
+            shutdownToken: "secret-token");
+        await app.StartAsync();
+
+        using var httpClient = new HttpClient();
+        using var rejectedRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            ConnectableUri(app, Hosting.ShutdownPath));
+        rejectedRequest.Headers.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", "wrong-token");
+        using var rejectedResponse = await httpClient.SendAsync(rejectedRequest);
+        Assert.Equal(HttpStatusCode.Unauthorized, rejectedResponse.StatusCode);
+
+        var stopping = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        app.Lifetime.ApplicationStopping.Register(() => stopping.SetResult(true));
+        using var acceptedRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            ConnectableUri(app, Hosting.ShutdownPath));
+        acceptedRequest.Headers.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", "secret-token");
+        using var acceptedResponse = await httpClient.SendAsync(acceptedRequest);
+
+        Assert.Equal(HttpStatusCode.Accepted, acceptedResponse.StatusCode);
+        await stopping.Task.WaitAsync(TimeSpan.FromSeconds(5));
     }
 }

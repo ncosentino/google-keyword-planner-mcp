@@ -3,8 +3,8 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup Label="MCP">
-    <PackageVersion Include="ModelContextProtocol" Version="1.4.0" />
-    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="1.4.0" />
+    <PackageVersion Include="ModelContextProtocol" Version="1.4.1" />
+    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="1.4.1" />
   </ItemGroup>
   <ItemGroup Label="Extensions">
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.0" />

@@ -1,83 +1,253 @@
 package main
 
 import (
+	"context"
+	"crypto/subtle"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
-	"slices"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// runHTTP serves srv over the MCP Streamable HTTP transport, listening on the
-// PORT environment variable (default 8080). Requests whose Host header isn't in
-// allowedHosts are rejected before reaching the MCP handler.
-func runHTTP(srv *mcp.Server, allowedHosts []string) {
-	port := resolveHTTPPort()
-	protected := buildHTTPHandler(srv, allowedHosts)
+const (
+	defaultHTTPListenAddress = "127.0.0.1"
+	defaultHTTPPort          = 8080
+	healthPath               = "/health"
+	mcpPath                  = "/mcp"
+	shutdownPath             = "/shutdown"
+	maxMCPRequestBytes       = 1 << 20
+)
 
-	slog.Info("google-keyword-planner-mcp starting",
-		"version", version, "transport", "http", "port", port, "allowed_hosts", allowedHosts)
-	if err := http.ListenAndServe(":"+port, protected); err != nil {
-		slog.Error("server stopped with error", "err", err)
-		os.Exit(1)
-	}
+type httpServerOptions struct {
+	ListenAddress string
+	Port          int
+	AllowedHosts  []string
+	ShutdownToken string
 }
 
-// buildHTTPHandler assembles the full middleware chain runHTTP serves: cross-
-// origin (CSRF) protection, then the Host allow-list, wrapping the MCP
-// Streamable HTTP handler for srv. Extracted so tests exercise this exact
-// composition instead of a hand-rolled approximation of it.
-func buildHTTPHandler(srv *mcp.Server, allowedHosts []string) http.Handler {
-	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
-		return srv
-	}, &mcp.StreamableHTTPOptions{
-		// This server has no need for server-to-client requests, so stateless mode
-		// is the documented recommendation: no session-affinity requirements, and
-		// no in-memory session state to leak across requests or restarts.
-		Stateless: true,
-	})
-
-	// Cross-origin (CSRF) protection rejects browser requests that the Origin/
-	// Sec-Fetch-Site headers identify as genuinely cross-site, while allowing
-	// same-origin browser requests and requests with neither header at all (the
-	// common case for non-browser MCP clients). Wrapped directly with the
-	// stdlib middleware rather than via StreamableHTTPOptions.CrossOriginProtection,
-	// which the SDK itself deprecates in favor of this pattern (see go-sdk's
-	// internal/docs/rough_edges.src.md: "should not have been part of the SDK
-	// API... can be applied as standard HTTP middleware").
-	protection := http.NewCrossOriginProtection()
-
-	return allowedHostsMiddleware(protection.Handler(handler), allowedHosts)
+type healthResponse struct {
+	Status    string `json:"status"`
+	Service   string `json:"service"`
+	Version   string `json:"version"`
+	Transport string `json:"transport"`
 }
 
-// resolveHTTPPort returns the PORT environment variable's value, or "8080" if
-// it is unset or empty. Some deployment platforms (e.g. Cloud Run) set PORT
-// automatically, so this must be read at call time rather than assumed absent.
-func resolveHTTPPort() string {
-	if port := os.Getenv("PORT"); port != "" {
-		return port
-	}
-	return "8080"
-}
-
-// allowedHostsMiddleware rejects requests whose Host header (ignoring any port)
-// doesn't match an entry in allowedHosts, with 403 Forbidden. net/http, unlike
-// some other server frameworks, does not validate the Host header on its own,
-// which otherwise leaves an HTTP-transport deployment open to DNS rebinding:
-// a browser could reach a server bound to localhost via an attacker-controlled
-// DNS name that resolves to 127.0.0.1, bypassing same-origin protections.
-func allowedHostsMiddleware(next http.Handler, allowedHosts []string) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		host := r.Host
-		if h, _, err := net.SplitHostPort(host); err == nil {
-			host = h
+func runHTTP(ctx context.Context, srv *mcp.Server, options httpServerOptions) error {
+	shutdownRequests := make(chan struct{}, 1)
+	httpServer := newHTTPServer(srv, options, func() {
+		select {
+		case shutdownRequests <- struct{}{}:
+		default:
 		}
-		if !slices.Contains(allowedHosts, host) {
-			http.Error(w, "host not allowed", http.StatusForbidden)
+	})
+	errorChannel := make(chan error, 1)
+
+	slog.Info(
+		"google-keyword-planner-mcp starting",
+		"version",
+		version,
+		"transport",
+		"http",
+		"address",
+		httpServer.Addr,
+		"endpoint",
+		mcpPath,
+		"allowed_hosts",
+		options.AllowedHosts,
+	)
+
+	go func() {
+		errorChannel <- httpServer.ListenAndServe()
+	}()
+
+	select {
+	case err := <-errorChannel:
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
+	case <-ctx.Done():
+		return shutdownHTTPServer(httpServer)
+	case <-shutdownRequests:
+		return shutdownHTTPServer(httpServer)
+	}
+}
+
+func shutdownHTTPServer(server *http.Server) error {
+	shutdownContext, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return server.Shutdown(shutdownContext)
+}
+
+func newHTTPServer(
+	srv *mcp.Server,
+	options httpServerOptions,
+	requestShutdown func(),
+) *http.Server {
+	return &http.Server{
+		Addr: net.JoinHostPort(options.ListenAddress, strconv.Itoa(options.Port)),
+		Handler: buildHTTPHandlerWithShutdown(
+			srv,
+			options.AllowedHosts,
+			options.ShutdownToken,
+			requestShutdown,
+		),
+		ReadHeaderTimeout: 5 * time.Second,
+		IdleTimeout:       2 * time.Minute,
+		MaxHeaderBytes:    1 << 20,
+	}
+}
+
+func buildHTTPHandler(srv *mcp.Server, allowedHosts []string) http.Handler {
+	return buildHTTPHandlerWithShutdown(srv, allowedHosts, "", nil)
+}
+
+func buildHTTPHandlerWithShutdown(
+	srv *mcp.Server,
+	allowedHosts []string,
+	shutdownToken string,
+	requestShutdown func(),
+) http.Handler {
+	mcpHandler := mcp.NewStreamableHTTPHandler(
+		func(*http.Request) *mcp.Server {
+			return srv
+		},
+		&mcp.StreamableHTTPOptions{Stateless: true},
+	)
+	originProtection := http.NewCrossOriginProtection()
+
+	mux := http.NewServeMux()
+	mux.Handle(
+		mcpPath,
+		originProtection.Handler(http.MaxBytesHandler(mcpHandler, maxMCPRequestBytes)),
+	)
+	mux.HandleFunc("GET "+healthPath, serveHealth)
+	if shutdownToken != "" && requestShutdown != nil {
+		mux.HandleFunc("POST "+shutdownPath, func(
+			writer http.ResponseWriter,
+			request *http.Request,
+		) {
+			serveShutdown(writer, request, shutdownToken, requestShutdown)
+		})
+	}
+	return allowedHostsMiddleware(mux, allowedHosts)
+}
+
+func serveHealth(writer http.ResponseWriter, _ *http.Request) {
+	writer.Header().Set("Cache-Control", "no-store")
+	writer.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(writer).Encode(healthResponse{
+		Status:    "ok",
+		Service:   "google-keyword-planner-mcp",
+		Version:   version,
+		Transport: "http",
+	}); err != nil {
+		slog.Warn("failed to write health response", "err", err)
+	}
+}
+
+func serveShutdown(
+	writer http.ResponseWriter,
+	request *http.Request,
+	shutdownToken string,
+	requestShutdown func(),
+) {
+	host, _, err := net.SplitHostPort(request.RemoteAddr)
+	remoteIP := net.ParseIP(host)
+	if err != nil || remoteIP == nil || !remoteIP.IsLoopback() {
+		http.Error(writer, "shutdown is only available from loopback", http.StatusForbidden)
+		return
+	}
+
+	const bearerPrefix = "Bearer "
+	authorization := request.Header.Get("Authorization")
+	if !strings.HasPrefix(authorization, bearerPrefix) ||
+		subtle.ConstantTimeCompare(
+			[]byte(strings.TrimPrefix(authorization, bearerPrefix)),
+			[]byte(shutdownToken),
+		) != 1 {
+		http.Error(writer, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	writer.Header().Set("Cache-Control", "no-store")
+	writer.Header().Set("Content-Type", "application/json")
+	writer.WriteHeader(http.StatusAccepted)
+	_, _ = writer.Write([]byte(`{"stopping":true}`))
+	requestShutdown()
+}
+
+func resolveHTTPListenAddress(flagValue string, explicitlySet bool) (string, error) {
+	if explicitlySet {
+		address := strings.TrimSpace(flagValue)
+		if address == "" {
+			return "", fmt.Errorf("listen address must not be empty")
+		}
+		return address, nil
+	}
+	if address := strings.TrimSpace(os.Getenv("MCP_LISTEN_ADDRESS")); address != "" {
+		return address, nil
+	}
+	return defaultHTTPListenAddress, nil
+}
+
+func resolveHTTPPort(flagValue int, explicitlySet bool) (int, error) {
+	if explicitlySet {
+		return validateHTTPPort(flagValue)
+	}
+	if value := strings.TrimSpace(os.Getenv("PORT")); value != "" {
+		port, err := strconv.Atoi(value)
+		if err != nil {
+			return 0, fmt.Errorf("PORT must be an integer: %w", err)
+		}
+		return validateHTTPPort(port)
+	}
+	return defaultHTTPPort, nil
+}
+
+func validateHTTPPort(port int) (int, error) {
+	if port < 1 || port > 65535 {
+		return 0, fmt.Errorf("port must be between 1 and 65535")
+	}
+	return port, nil
+}
+
+func allowedHostsMiddleware(next http.Handler, allowedHosts []string) http.Handler {
+	normalizedAllowedHosts := make([]string, 0, len(allowedHosts))
+	for _, host := range allowedHosts {
+		normalizedAllowedHosts = append(normalizedAllowedHosts, normalizeHost(host))
+	}
+
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		host := request.Host
+		if parsedHost, _, err := net.SplitHostPort(host); err == nil {
+			host = parsedHost
+		}
+		host = normalizeHost(host)
+
+		allowed := false
+		for _, allowedHost := range normalizedAllowedHosts {
+			if strings.EqualFold(host, allowedHost) {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			http.Error(writer, "host not allowed", http.StatusForbidden)
 			return
 		}
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(writer, request)
 	})
+}
+
+func normalizeHost(host string) string {
+	return strings.Trim(strings.TrimSpace(host), "[]")
 }
