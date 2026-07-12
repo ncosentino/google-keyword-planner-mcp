@@ -100,9 +100,11 @@ jobs:
 
       - name: Publish Native AOT (${{ matrix.rid }})
         run: |
+          VERSION="${GITHUB_REF_NAME#v}"
           dotnet publish src/KeywordPlannerMcp/KeywordPlannerMcp.csproj \
             -r ${{ matrix.rid }} \
             -c Release \
+            -p:Version="$VERSION" \
             --self-contained true \
             -o ./publish/${{ matrix.rid }}
         shell: bash

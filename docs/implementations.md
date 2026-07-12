@@ -16,8 +16,13 @@ Both implementations expose identical MCP tools and accept the same credentials.
 | Platforms | All | All |
 | Runtime required | None | None |
 | Transports | stdio, HTTP | stdio, HTTP |
+| HTTP mode | Stateless | Stateless |
+| Default listener | `127.0.0.1:8080` | `127.0.0.1:8080` |
+| HTTP endpoints | `/mcp`, `/health` | `/mcp`, `/health` |
 
-Both are self-contained native binaries -- no Go toolchain, no .NET runtime, no Node.js, no Python required. Both support the same [HTTP transport](transports.md) with an equivalent Host allow-list security default; the only cosmetic difference is the HTTP status code returned for a disallowed host (`403` for Go, `400` for C#, since C# uses ASP.NET Core's built-in Host Filtering Middleware as-is rather than custom logic).
+Both are self-contained native binaries. Both implement the same shared HTTP
+contract, including Host and Origin validation. The only cosmetic difference
+is the disallowed-Host status code (`403` for Go and `400` for C#).
 
 ## When to Choose Go
 
