@@ -280,8 +280,8 @@ affinity.
 
 The HTTP host does not authenticate ordinary MCP callers. Keep it on loopback
 or place it behind TLS and an authenticated reverse proxy. See
-[Shared Service](https://github.devleader.ca/google-keyword-planner-mcp/shared-service/)
-and [Transports](https://github.devleader.ca/google-keyword-planner-mcp/transports/).
+[Shared Service](https://www.devleader.ca/projects/google-keyword-planner-mcp/shared-service/)
+and [Transports](https://www.devleader.ca/projects/google-keyword-planner-mcp/transports/).
 
 ---
 
