@@ -12,8 +12,8 @@ import (
 // repair; it is intentionally a plain data map (not per-tool duplicated logic),
 // so every tool with a keyword-list parameter is covered by one code path.
 var toolArrayFields = map[string][]string{
-	"generate_keyword_ideas": {"seed_keywords"},
-	"get_historical_metrics": {"keywords"},
+	"generate_keyword_ideas": {"seed_keywords", "geo_target_constants"},
+	"get_historical_metrics": {"keywords", "geo_target_constants"},
 	"get_keyword_forecast":   {"keywords"},
 }
 
