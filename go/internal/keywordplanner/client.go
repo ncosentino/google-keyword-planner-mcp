@@ -16,10 +16,10 @@ import (
 )
 
 const (
-	tokenURL    = "https://oauth2.googleapis.com/token"
-	adsAPIBase  = "https://googleads.googleapis.com/v23"
+	tokenURL      = "https://oauth2.googleapis.com/token"
+	adsAPIBase    = "https://googleads.googleapis.com/v23"
 	adsAPIVersion = "v23"
-	httpTimeout = 30 * time.Second
+	httpTimeout   = 30 * time.Second
 )
 
 // Client calls the Google Ads Keyword Planner API.
@@ -79,13 +79,24 @@ func NewTestClient(developerToken, customerID, loginCustomerID, baseURL string, 
 }
 
 // GenerateKeywordIdeas returns keyword ideas for the given seed keywords and/or URL.
+// geoTargetConstants scopes volumes to specific locations (e.g.
+// "geoTargetConstants/2036" for Australia). When empty, the API applies no
+// location filter and returns worldwide aggregate volumes — for a
+// country-specific term that can differ from the local figure by an order of
+// magnitude, with nothing in the response indicating which you received.
+//
+// keywordPlanNetwork is "GOOGLE_SEARCH" or "GOOGLE_SEARCH_AND_PARTNERS"; when
+// empty the API default (search and partners) applies, which reads higher than
+// the search-only figure the Keyword Planner web UI shows by default.
 func (c *Client) GenerateKeywordIdeas(
 	ctx context.Context,
 	seedKeywords []string,
 	seedURL string,
 	language string,
+	geoTargetConstants []string,
+	keywordPlanNetwork string,
 ) (*KeywordIdeasResponse, error) {
-	reqBody := c.buildKeywordIdeasRequest(seedKeywords, seedURL, language)
+	reqBody := c.buildKeywordIdeasRequest(seedKeywords, seedURL, language, geoTargetConstants, keywordPlanNetwork)
 	endpoint := fmt.Sprintf("%s/customers/%s:generateKeywordIdeas", c.baseURL, c.customerID)
 
 	var raw generateKeywordIdeasResponse
@@ -113,11 +124,21 @@ func (c *Client) GenerateKeywordIdeas(
 }
 
 // GetHistoricalMetrics returns historical search metrics for a list of keywords.
+// See GenerateKeywordIdeas for the meaning of geoTargetConstants and
+// keywordPlanNetwork, and for what the API does when they are omitted.
 func (c *Client) GetHistoricalMetrics(
 	ctx context.Context,
 	keywords []string,
+	geoTargetConstants []string,
+	keywordPlanNetwork string,
+	language string,
 ) (*HistoricalMetricsResponse, error) {
-	reqBody := generateHistoricalMetricsRequest{Keywords: keywords}
+	reqBody := generateHistoricalMetricsRequest{
+		Keywords:           keywords,
+		GeoTargetConstants: geoTargetConstants,
+		KeywordPlanNetwork: keywordPlanNetwork,
+		Language:           language,
+	}
 	endpoint := fmt.Sprintf("%s/customers/%s:generateKeywordHistoricalMetrics", c.baseURL, c.customerID)
 
 	var raw generateHistoricalMetricsResponse
@@ -251,8 +272,17 @@ func (c *Client) post(ctx context.Context, endpoint string, body, out any) error
 	return nil
 }
 
-func (c *Client) buildKeywordIdeasRequest(seedKeywords []string, seedURL, language string) generateKeywordIdeasRequest {
-	req := generateKeywordIdeasRequest{Language: language}
+func (c *Client) buildKeywordIdeasRequest(
+	seedKeywords []string,
+	seedURL, language string,
+	geoTargetConstants []string,
+	keywordPlanNetwork string,
+) generateKeywordIdeasRequest {
+	req := generateKeywordIdeasRequest{
+		Language:           language,
+		GeoTargetConstants: geoTargetConstants,
+		KeywordPlanNetwork: keywordPlanNetwork,
+	}
 	switch {
 	case len(seedKeywords) > 0 && seedURL != "":
 		req.KeywordAndURLSeed = &keywordAndURLSeed{URL: seedURL, Keywords: seedKeywords}
@@ -284,5 +314,3 @@ func parseMonthEnum(month string) int32 {
 	}
 	return 0
 }
-
-
