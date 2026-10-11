@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/oauth2"
@@ -22,6 +23,9 @@ const (
 	adsAPIBase    = "https://googleads.googleapis.com/v25"
 	adsAPIVersion = "v25"
 	httpTimeout   = 30 * time.Second
+
+	// forecastConcurrency caps the parallel requests of one keyword forecast.
+	forecastConcurrency = 5
 )
 
 // Client calls the Google Ads Keyword Planner API.
@@ -275,10 +279,14 @@ type ForecastRequest struct {
 //
 // The API returns one campaign-level aggregate per request, so this issues one
 // request per keyword to build the per-keyword breakdown, plus one request with
-// every keyword in a single ad group for the campaign total. The per-keyword
+// every keyword in a single ad group for the campaign total. The requests run
+// concurrently; a single keyword needs only one. The per-keyword
 // figures will not sum to the total: keywords in one ad group compete for the
 // same impressions and the total accounts for that overlap.
 func (c *Client) GetKeywordForecast(ctx context.Context, req ForecastRequest) (*ForecastResponse, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if len(req.Keywords) == 0 {
 		return nil, fmt.Errorf("at least one keyword is required")
 	}
@@ -311,6 +319,9 @@ func (c *Client) GetKeywordForecast(ctx context.Context, req ForecastRequest) (*
 	// so start two days out.
 	period := forecastPeriodFor(time.Now(), forecastDays)
 	startDate, endDate := period.StartDate, period.EndDate
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	forecast := func(keywords []string) (KeywordForecastMetrics, error) {
 		infos := make([]forecastKeyword, 0, len(keywords))
@@ -355,19 +366,76 @@ func (c *Client) GetKeywordForecast(ctx context.Context, req ForecastRequest) (*
 
 	perKeyword := make([]KeywordForecastMetrics, 0, len(req.Keywords))
 	if req.IncludeKeywordBreakdown {
-		for _, kw := range req.Keywords {
-			metrics, err := forecast([]string{kw})
-			if err != nil {
-				return nil, fmt.Errorf("forecasting %q: %w", kw, err)
-			}
-			metrics.Text = kw
-			perKeyword = append(perKeyword, metrics)
+		perKeyword = make([]KeywordForecastMetrics, len(req.Keywords))
+	}
+	// The requests are independent, so run them concurrently. The first failure
+	// cancels the rest and is the error reported.
+	var (
+		total    KeywordForecastMetrics
+		wg       sync.WaitGroup
+		slots    = make(chan struct{}, forecastConcurrency)
+		failOnce sync.Once
+		firstErr error
+	)
+	run := func(job func() error) bool {
+		select {
+		case slots <- struct{}{}:
+		case <-ctx.Done():
+			return false
 		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() { <-slots }()
+			if ctx.Err() != nil {
+				return
+			}
+			if err := job(); err != nil {
+				failOnce.Do(func() {
+					firstErr = err
+					cancel()
+				})
+			}
+		}()
+		return true
 	}
 
-	total, err := forecast(req.Keywords)
-	if err != nil {
-		return nil, fmt.Errorf("forecasting combined ad group: %w", err)
+	if req.IncludeKeywordBreakdown {
+		for i, kw := range req.Keywords {
+			if !run(func() error {
+				metrics, err := forecast([]string{kw})
+				if err != nil {
+					return fmt.Errorf("forecasting %q: %w", kw, err)
+				}
+				metrics.Text = kw
+				perKeyword[i] = metrics
+				return nil
+			}) {
+				break
+			}
+		}
+	}
+	// A single keyword is its own ad group, so its forecast is the total.
+	if !req.IncludeKeywordBreakdown || len(req.Keywords) > 1 {
+		run(func() error {
+			metrics, err := forecast(req.Keywords)
+			if err != nil {
+				return fmt.Errorf("forecasting combined ad group: %w", err)
+			}
+			total = metrics
+			return nil
+		})
+	}
+	wg.Wait()
+	if firstErr != nil {
+		return nil, firstErr
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if req.IncludeKeywordBreakdown && len(req.Keywords) == 1 {
+		total = perKeyword[0]
+		total.Text = ""
 	}
 
 	return &ForecastResponse{
