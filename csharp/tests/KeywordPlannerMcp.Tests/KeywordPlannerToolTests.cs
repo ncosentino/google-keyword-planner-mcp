@@ -127,15 +127,15 @@ public sealed class KeywordPlannerToolTests
     {
         var tool = CreateToolWithFakeApi(HttpStatusCode.OK, """
             {
-                "metrics": [{
+                "results": [{
                     "text": "dependency injection",
                     "keywordMetrics": {
                         "avgMonthlySearches": "1000",
                         "competition": "MEDIUM",
-                        "competitionIndex": 50,
+                        "competitionIndex": "50",
                         "lowTopOfPageBidMicros": "100000",
                         "highTopOfPageBidMicros": "500000",
-                        "monthlySearchVolumes": []
+                        "monthlySearchVolumes": [{"year":"2026","month":"SEPTEMBER","monthlySearches":"900"}]
                     }
                 }]
             }
@@ -147,6 +147,8 @@ public sealed class KeywordPlannerToolTests
         Assert.NotNull(result);
         Assert.Equal(1, result.Count);
         Assert.Equal("dependency injection", result.Keywords[0].Text);
+        Assert.Equal(50, result.Keywords[0].CompetitionIndex);
+        Assert.Equal(new MonthlyVolume(2026, 9, 900), Assert.Single(result.Keywords[0].MonthlySearchVolumes));
     }
 
     [Fact]
@@ -166,12 +168,7 @@ public sealed class KeywordPlannerToolTests
     {
         var tool = CreateToolWithFakeApi(HttpStatusCode.OK, """
             {
-                "adGroupForecastMetrics": [{
-                    "keywordForecastMetrics": [{
-                        "keyword": {"text": "dependency injection", "matchType": "BROAD"},
-                        "metrics": {"impressions": 1000, "clicks": 50, "costMicros": 500000, "ctr": 0.05}
-                    }]
-                }]
+                "campaignForecastMetrics": {"clicks": 50, "costMicros": "500000", "averageCpcMicros": "10000"}
             }
             """);
 
@@ -179,8 +176,10 @@ public sealed class KeywordPlannerToolTests
 
         var result = JsonSerializer.Deserialize(resultJson, KwpJsonContext.Default.ForecastResponse);
         Assert.NotNull(result);
-        Assert.Single(result.Keywords);
-        Assert.Equal("dependency injection", result.Keywords[0].Text);
+        Assert.Empty(result.Keywords);
+        Assert.Equal(50d, result.Total.Clicks);
+        Assert.Equal(500000L, result.Total.CostMicros);
+        Assert.Equal(10000L, result.Total.AverageCpcMicros);
         Assert.Equal(30, result.ForecastDays);
         Assert.Equal(1_000_000, result.MaxCpcMicros);
     }

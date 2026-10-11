@@ -39,17 +39,23 @@ internal sealed record HistoricalMetricsResponse(
 
 /// <summary>Projected performance metrics for a keyword.</summary>
 internal sealed record KeywordForecastMetrics(
-    string Text,
-    double Impressions,
-    double Clicks,
-    double CostMicros,
-    double Ctr);
+    string? Text,
+    double? Clicks,
+    long? CostMicros,
+    long? AverageCpcMicros);
 
 /// <summary>The result of a keyword forecast request.</summary>
 internal sealed record ForecastResponse(
     IReadOnlyList<KeywordForecastMetrics> Keywords,
+    KeywordForecastMetrics Total,
     int ForecastDays,
-    long MaxCpcMicros);
+    long MaxCpcMicros,
+    string StartDate,
+    string EndDate,
+    string? Language,
+    IReadOnlyList<string>? GeoTargetConstants,
+    string? CurrencyCode,
+    string MatchType);
 
 /// <summary>An error result.</summary>
 internal sealed record ErrorResult(string Error);
@@ -60,6 +66,12 @@ internal sealed class GenerateKeywordIdeasRequest
 {
     [JsonPropertyName("language")]
     public string? Language { get; set; }
+
+    [JsonPropertyName("geoTargetConstants")]
+    public IReadOnlyList<string>? GeoTargetConstants { get; set; }
+
+    [JsonPropertyName("keywordPlanNetwork")]
+    public string? KeywordPlanNetwork { get; set; }
 
     [JsonPropertyName("keywordSeed")]
     public KeywordSeed? KeywordSeed { get; set; }
@@ -126,12 +138,21 @@ internal sealed class GenerateHistoricalMetricsRequest
 {
     [JsonPropertyName("keywords")]
     public IReadOnlyList<string> Keywords { get; set; } = [];
+
+    [JsonPropertyName("language")]
+    public string? Language { get; set; }
+
+    [JsonPropertyName("geoTargetConstants")]
+    public IReadOnlyList<string>? GeoTargetConstants { get; set; }
+
+    [JsonPropertyName("keywordPlanNetwork")]
+    public string? KeywordPlanNetwork { get; set; }
 }
 
 internal sealed class GenerateHistoricalMetricsResponse
 {
-    [JsonPropertyName("metrics")]
-    public List<HistoricalMetricsResult>? Metrics { get; set; }
+    [JsonPropertyName("results")]
+    public List<HistoricalMetricsResult>? Results { get; set; }
 }
 
 internal sealed class HistoricalMetricsResult
@@ -152,7 +173,7 @@ internal sealed class RawKeywordMetrics
     public string Competition { get; set; } = string.Empty;
 
     [JsonPropertyName("competitionIndex")]
-    public int CompetitionIndex { get; set; }
+    public string? CompetitionIndex { get; set; }
 
     [JsonPropertyName("lowTopOfPageBidMicros")]
     public string? LowTopOfPageBidMicros { get; set; }
@@ -167,7 +188,7 @@ internal sealed class RawKeywordMetrics
 internal sealed class RawMonthlyVolume
 {
     [JsonPropertyName("year")]
-    public int Year { get; set; }
+    public string? Year { get; set; }
 
     [JsonPropertyName("month")]
     public string Month { get; set; } = string.Empty;
@@ -178,20 +199,35 @@ internal sealed class RawMonthlyVolume
 
 internal sealed class GenerateForecastMetricsRequest
 {
-    [JsonPropertyName("campaignForecastSpec")]
-    public CampaignForecastSpec CampaignForecastSpec { get; set; } = new();
+    [JsonPropertyName("campaign")]
+    public CampaignForecast Campaign { get; set; } = new();
+
+    [JsonPropertyName("forecastPeriod")]
+    public ForecastPeriod ForecastPeriod { get; set; } = new();
+
+    [JsonPropertyName("currencyCode")]
+    public string? CurrencyCode { get; set; }
 }
 
-internal sealed class CampaignForecastSpec
+internal sealed class ForecastPeriod
 {
-    [JsonPropertyName("biddingStrategy")]
-    public BiddingStrategy BiddingStrategy { get; set; } = new();
-
     [JsonPropertyName("startDate")]
     public string StartDate { get; set; } = string.Empty;
 
     [JsonPropertyName("endDate")]
     public string EndDate { get; set; } = string.Empty;
+}
+
+internal sealed class CampaignForecast
+{
+    [JsonPropertyName("languageConstants")]
+    public IReadOnlyList<string>? LanguageConstants { get; set; }
+
+    [JsonPropertyName("geoTargetConstants")]
+    public IReadOnlyList<string>? GeoTargetConstants { get; set; }
+
+    [JsonPropertyName("biddingStrategy")]
+    public BiddingStrategy BiddingStrategy { get; set; } = new();
 
     [JsonPropertyName("adGroups")]
     public IReadOnlyList<AdGroupForecast> AdGroups { get; set; } = [];
@@ -211,14 +247,8 @@ internal sealed class ManualCpcBiddingStrategy
 
 internal sealed class AdGroupForecast
 {
-    [JsonPropertyName("biddableKeywords")]
-    public IReadOnlyList<AdGroupForecastKeyword> BiddableKeywords { get; set; } = [];
-}
-
-internal sealed class AdGroupForecastKeyword
-{
-    [JsonPropertyName("keyword")]
-    public ForecastKeyword Keyword { get; set; } = new();
+    [JsonPropertyName("keywords")]
+    public IReadOnlyList<ForecastKeyword> Keywords { get; set; } = [];
 }
 
 internal sealed class ForecastKeyword
@@ -232,38 +262,22 @@ internal sealed class ForecastKeyword
 
 internal sealed class GenerateForecastMetricsResponse
 {
-    [JsonPropertyName("adGroupForecastMetrics")]
-    public List<AdGroupForecastMetrics>? AdGroupForecastMetrics { get; set; }
-}
-
-internal sealed class AdGroupForecastMetrics
-{
-    [JsonPropertyName("keywordForecastMetrics")]
-    public List<KeywordForecastMetric>? KeywordForecastMetrics { get; set; }
-}
-
-internal sealed class KeywordForecastMetric
-{
-    [JsonPropertyName("keyword")]
-    public ForecastKeyword Keyword { get; set; } = new();
-
-    [JsonPropertyName("metrics")]
-    public ForecastMetricData Metrics { get; set; } = new();
+    [JsonPropertyName("campaignForecastMetrics")]
+    public ForecastMetricData? CampaignForecastMetrics { get; set; }
 }
 
 internal sealed class ForecastMetricData
 {
-    [JsonPropertyName("impressions")]
-    public double Impressions { get; set; }
-
     [JsonPropertyName("clicks")]
-    public double Clicks { get; set; }
+    public double? Clicks { get; set; }
 
     [JsonPropertyName("costMicros")]
-    public double CostMicros { get; set; }
+    [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]
+    public long? CostMicros { get; set; }
 
-    [JsonPropertyName("ctr")]
-    public double Ctr { get; set; }
+    [JsonPropertyName("averageCpcMicros")]
+    [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]
+    public long? AverageCpcMicros { get; set; }
 }
 
 internal sealed class TokenResponse
