@@ -8,7 +8,8 @@ description: Fix DEVELOPER_TOKEN_NOT_APPROVED, USER_PERMISSION_DENIED, billing e
 
 | Error | Meaning | Fix |
 |-------|---------|-----|
-| `DEVELOPER_TOKEN_NOT_APPROVED` | Your developer token is in test mode and cannot access real accounts | Apply for Basic access at `https://ads.google.com/aw/apicenter` and wait for Google approval (typically a few days) |
+| `CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION` | The OAuth Google Cloud project has Test access only | Apply for Explorer or a higher access level in Google Cloud Console |
+| Legacy `DEVELOPER_TOKEN_NOT_APPROVED` or `ACTION_NOT_PERMITTED` | API access is not approved for the requested account/environment | Review project access levels in the Google Ads API overview, not the retired API Center |
 | `USER_PERMISSION_DENIED` (mentions `login-customer-id`) | The account is a managed sub-account but `GOOGLE_ADS_LOGIN_CUSTOMER_ID` is missing or set to the wrong value | Set `GOOGLE_ADS_LOGIN_CUSTOMER_ID` to your manager account ID |
 | `USER_PERMISSION_DENIED` (no mention of `login-customer-id`) | The Google account used in the OAuth flow does not have access to the ads account | Re-run the OAuth refresh token flow as the Google account that owns or has access to the ads account |
 | HTTP 400 `INVALID_ARGUMENT` | Often a malformed customer ID or a missing required field | Check that `GOOGLE_ADS_CUSTOMER_ID` contains only digits -- dashes are stripped automatically, but extra characters are not |
@@ -37,11 +38,14 @@ If you receive permission errors and are unsure whether you need `GOOGLE_ADS_LOG
 
 ---
 
-## Test Mode Tokens
+## Test Access Projects
 
-New developer tokens are issued in **test mode** by default. In test mode:
+Projects with **Test access** cannot query production accounts:
 
-- API calls to real accounts return `DEVELOPER_TOKEN_NOT_APPROVED`.
+- v25 production calls return `CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION`.
 - Calls to [Google Ads test accounts](https://developers.google.com/google-ads/api/docs/best-practices/test-accounts) work correctly.
 
-To leave test mode: go to `https://ads.google.com/aw/apicenter`, click **Apply for Basic Access**, and complete the form. Google reviews requests within a few days. **Standard access is not required** -- Basic access is sufficient for all Keyword Planner tools.
+Apply for Explorer or a higher access level through the
+[Google Ads API overview](https://console.cloud.google.com/google/ads-apis/overview).
+Developer tokens were sunset on September 9, 2026 and are now optional ignored
+headers. See Google's [migration guide](https://developers.google.com/google-ads/api/docs/api-policy/developer-token).

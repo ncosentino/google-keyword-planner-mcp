@@ -10,7 +10,7 @@ Credentials are resolved in this priority order: **CLI flag > environment variab
 
 | Credential | CLI flag | Environment variable | Required | Description |
 |------------|----------|---------------------|----------|-------------|
-| Developer token | `--developer-token` | `GOOGLE_ADS_DEVELOPER_TOKEN` | Yes | From Google Ads API Center (manager account only) |
+| Legacy developer token | `--developer-token` | `GOOGLE_ADS_DEVELOPER_TOKEN` | No | Retained for compatibility; ignored by Google since September 9, 2026 |
 | OAuth2 client ID | `--client-id` | `GOOGLE_ADS_CLIENT_ID` | Yes | From GCP OAuth2 credentials (Desktop app type) |
 | OAuth2 client secret | `--client-secret` | `GOOGLE_ADS_CLIENT_SECRET` | Yes | From GCP OAuth2 credentials |
 | Refresh token | `--refresh-token` | `GOOGLE_ADS_REFRESH_TOKEN` | Yes | From one-time OAuth2 flow (see [Getting Started](getting-started.md)) |
@@ -52,13 +52,18 @@ Dashes are stripped automatically before the API call.
 
 ---
 
-## Developer Token Access Levels
+## Google Cloud Project Access Levels
 
 | Access level | Can call real accounts? | How to get |
 |---|---|---|
-| Test mode (default) | ❌ No -- only [test accounts](https://developers.google.com/google-ads/api/docs/best-practices/test-accounts) | Issued automatically when you create a developer token |
-| Basic access | ✅ Yes | Click **Apply for Basic Access** at `https://ads.google.com/aw/apicenter` and wait a few days |
+| Test access | ❌ No -- only [test accounts](https://developers.google.com/google-ads/api/docs/best-practices/test-accounts) | Google Cloud project test access |
+| Explorer access | ✅ Yes | Apply through the Google Ads API overview in Google Cloud Console |
+| Basic access | ✅ Yes | Apply through Google Cloud Console; brand verification is required for new applications |
 | Standard access | ✅ Yes | Apply separately; not required for Keyword Planner |
+
+Developer tokens were sunset on September 9, 2026. Access is determined by the
+Google Cloud project used for OAuth credentials. Do not use the retired Ads
+API Center signup process. See Google's [migration guide](https://developers.google.com/google-ads/api/docs/api-policy/developer-token).
 
 ---
 
