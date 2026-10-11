@@ -76,10 +76,11 @@ public sealed class HostingHttpTests
 
             var tools = await client.ListToolsAsync();
 
-            Assert.Equal(3, tools.Count);
+            Assert.Equal(4, tools.Count);
             Assert.Contains(tools, t => t.Name == "generate_keyword_ideas");
             Assert.Contains(tools, t => t.Name == "get_historical_metrics");
             Assert.Contains(tools, t => t.Name == "get_keyword_forecast");
+            Assert.Contains(tools, t => t.Name == "search_geo_targets");
         }
         finally
         {

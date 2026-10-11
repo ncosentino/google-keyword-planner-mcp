@@ -21,18 +21,20 @@ public sealed class KeywordPlannerParityTests
 
     private sealed class RecordingPacer : IPlanningPacer
     {
-        public int Calls { get; private set; }
+        private int _calls;
+        public int Calls => _calls;
         public bool Cancel { get; set; }
         public Task WaitAsync(CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            Calls++;
+            Interlocked.Increment(ref _calls);
             return Cancel ? Task.FromCanceled(new CancellationToken(true)) : Task.CompletedTask;
         }
     }
 
     private sealed class Handler : HttpMessageHandler
     {
+        private readonly object _recordingGate = new();
         public List<string> Bodies { get; } = [];
         public List<string> Endpoints { get; } = [];
         public int TokenCalls { get; private set; }
@@ -50,12 +52,16 @@ public sealed class KeywordPlannerParityTests
             }
             else
             {
-                Endpoints.Add(request.RequestUri.AbsoluteUri);
-                Bodies.Add(await request.Content!.ReadAsStringAsync(cancellationToken));
-                body = request.RequestUri.AbsoluteUri.EndsWith("generateKeywordForecastMetrics", StringComparison.Ordinal)
-                    ? ForecastResponder?.Invoke(Bodies.Count) ?? ForecastResponse ?? ForecastBody
-                    : request.RequestUri.AbsoluteUri.EndsWith("generateKeywordHistoricalMetrics", StringComparison.Ordinal)
-                        ? HistoricalBody : """{"results":[]}""";
+                var requestBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+                lock (_recordingGate)
+                {
+                    Endpoints.Add(request.RequestUri.AbsoluteUri);
+                    Bodies.Add(requestBody);
+                    body = request.RequestUri.AbsoluteUri.EndsWith("generateKeywordForecastMetrics", StringComparison.Ordinal)
+                        ? ForecastResponder?.Invoke(Bodies.Count) ?? ForecastResponse ?? ForecastBody
+                        : request.RequestUri.AbsoluteUri.EndsWith("generateKeywordHistoricalMetrics", StringComparison.Ordinal)
+                            ? HistoricalBody : """{"results":[]}""";
+                }
             }
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body) };
         }
