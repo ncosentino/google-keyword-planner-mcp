@@ -13,13 +13,14 @@ import (
 	"time"
 
 	"golang.org/x/oauth2"
+	"golang.org/x/time/rate"
 )
 
 const (
-	tokenURL    = "https://oauth2.googleapis.com/token"
-	adsAPIBase  = "https://googleads.googleapis.com/v23"
-	adsAPIVersion = "v23"
-	httpTimeout = 30 * time.Second
+	tokenURL      = "https://oauth2.googleapis.com/token"
+	adsAPIBase    = "https://googleads.googleapis.com/v25"
+	adsAPIVersion = "v25"
+	httpTimeout   = 30 * time.Second
 )
 
 // Client calls the Google Ads Keyword Planner API.
@@ -30,6 +31,49 @@ type Client struct {
 	loginCustomerID string
 	baseURL         string
 	tokenSource     oauth2.TokenSource
+	// defaultLanguage and defaultGeoTargets apply to calls that do not set their own.
+	defaultLanguage   string
+	defaultGeoTargets []string
+	planningLimiter   interface{ Wait(context.Context) error }
+}
+
+// SetDefaultTargeting sets the language and geo target resource names used by calls
+// that leave them empty. Empty defaults mean no restriction.
+func (c *Client) SetDefaultTargeting(language string, geoTargets []string) {
+	c.defaultLanguage = language
+	c.defaultGeoTargets = geoTargets
+}
+
+func (c *Client) targeting(language string, geoTargets []string) (string, []string, error) {
+	if language == "" {
+		language = c.defaultLanguage
+	}
+	if geoTargets == nil {
+		geoTargets = c.defaultGeoTargets
+	}
+	if language != "" && strings.TrimSpace(language) == "" {
+		return "", nil, fmt.Errorf("language must not be blank; use 'all' for all languages")
+	}
+	language = strings.TrimSpace(language)
+	if strings.EqualFold(language, "all") {
+		language = ""
+	}
+	targets := make([]string, 0, len(geoTargets))
+	seen := make(map[string]bool)
+	for _, target := range geoTargets {
+		target = strings.TrimSpace(target)
+		if target == "" {
+			return "", nil, fmt.Errorf("geo targets must not be blank; use [] for worldwide targeting")
+		}
+		if !seen[target] {
+			targets = append(targets, target)
+			seen[target] = true
+		}
+	}
+	if len(targets) > 10 {
+		return "", nil, fmt.Errorf("at most 10 geo targets are supported")
+	}
+	return language, targets, nil
 }
 
 // NewClient creates a Client with the provided OAuth2 credentials.
@@ -58,6 +102,7 @@ func NewClientWithBaseURL(developerToken, clientID, clientSecret, refreshToken, 
 		loginCustomerID: loginCustomerID,
 		baseURL:         baseURL,
 		tokenSource:     ts,
+		planningLimiter: rate.NewLimiter(rate.Every(time.Second), 1),
 	}
 }
 
@@ -79,13 +124,28 @@ func NewTestClient(developerToken, customerID, loginCustomerID, baseURL string, 
 }
 
 // GenerateKeywordIdeas returns keyword ideas for the given seed keywords and/or URL.
+// geoTargetConstants scopes volumes to specific locations (e.g.
+// "geoTargetConstants/2036" for Australia). When empty, the API applies no
+// location filter and returns worldwide aggregate volumes — for a
+// country-specific term that can differ from the local figure by an order of
+// magnitude, with nothing in the response indicating which you received.
+//
+// keywordPlanNetwork is "GOOGLE_SEARCH" or "GOOGLE_SEARCH_AND_PARTNERS"; when
+// empty the API default (search and partners) applies, which reads higher than
+// the search-only figure the Keyword Planner web UI shows by default.
 func (c *Client) GenerateKeywordIdeas(
 	ctx context.Context,
 	seedKeywords []string,
 	seedURL string,
 	language string,
+	geoTargetConstants []string,
+	keywordPlanNetwork string,
 ) (*KeywordIdeasResponse, error) {
-	reqBody := c.buildKeywordIdeasRequest(seedKeywords, seedURL, language)
+	language, geoTargetConstants, err := c.targeting(language, geoTargetConstants)
+	if err != nil {
+		return nil, err
+	}
+	reqBody := c.buildKeywordIdeasRequest(seedKeywords, seedURL, language, geoTargetConstants, keywordPlanNetwork)
 	endpoint := fmt.Sprintf("%s/customers/%s:generateKeywordIdeas", c.baseURL, c.customerID)
 
 	var raw generateKeywordIdeasResponse
@@ -113,11 +173,28 @@ func (c *Client) GenerateKeywordIdeas(
 }
 
 // GetHistoricalMetrics returns historical search metrics for a list of keywords.
+//
+// language and geoTargetConstants are optional but strongly recommended:
+// without them the search volumes cover the whole world in every language,
+// which is not what a targeted campaign will see.
+// keywordPlanNetwork is optional; see GenerateKeywordIdeas.
 func (c *Client) GetHistoricalMetrics(
 	ctx context.Context,
 	keywords []string,
+	language string,
+	geoTargetConstants []string,
+	keywordPlanNetwork string,
 ) (*HistoricalMetricsResponse, error) {
-	reqBody := generateHistoricalMetricsRequest{Keywords: keywords}
+	language, geoTargetConstants, err := c.targeting(language, geoTargetConstants)
+	if err != nil {
+		return nil, err
+	}
+	reqBody := generateHistoricalMetricsRequest{
+		Keywords:           keywords,
+		Language:           language,
+		GeoTargetConstants: geoTargetConstants,
+		KeywordPlanNetwork: keywordPlanNetwork,
+	}
 	endpoint := fmt.Sprintf("%s/customers/%s:generateKeywordHistoricalMetrics", c.baseURL, c.customerID)
 
 	var raw generateHistoricalMetricsResponse
@@ -125,12 +202,12 @@ func (c *Client) GetHistoricalMetrics(
 		return nil, err
 	}
 
-	metrics := make([]KeywordMetrics, 0, len(raw.Metrics))
-	for _, r := range raw.Metrics {
+	metrics := make([]KeywordMetrics, 0, len(raw.Results))
+	for _, r := range raw.Results {
 		monthly := make([]MonthlyVolume, 0, len(r.KeywordMetrics.MonthlySearchVolumes))
 		for _, m := range r.KeywordMetrics.MonthlySearchVolumes {
 			monthly = append(monthly, MonthlyVolume{
-				Year:            m.Year,
+				Year:            int32(parseI64(m.Year)),
 				Month:           parseMonthEnum(m.Month),
 				MonthlySearches: parseI64(m.MonthlySearches),
 			})
@@ -139,7 +216,7 @@ func (c *Client) GetHistoricalMetrics(
 			Text:                   r.Text,
 			AvgMonthlySearches:     parseI64(r.KeywordMetrics.AvgMonthlySearches),
 			Competition:            r.KeywordMetrics.Competition,
-			CompetitionIndex:       r.KeywordMetrics.CompetitionIndex,
+			CompetitionIndex:       int32(parseI64(r.KeywordMetrics.CompetitionIndex)),
 			LowTopOfPageBidMicros:  parseI64(r.KeywordMetrics.LowTopOfPageBidMicros),
 			HighTopOfPageBidMicros: parseI64(r.KeywordMetrics.HighTopOfPageBidMicros),
 			MonthlySearchVolumes:   monthly,
@@ -149,71 +226,152 @@ func (c *Client) GetHistoricalMetrics(
 	return &HistoricalMetricsResponse{Keywords: metrics, Count: len(metrics)}, nil
 }
 
+// ForecastRequest describes a keyword forecast to run.
+//
+// GeoTargetConstants and Language are optional but strongly recommended: with
+// neither set the API forecasts worldwide traffic across all languages, which
+// bears no resemblance to what a geographically targeted campaign will deliver.
+type ForecastRequest struct {
+	Keywords                []string
+	MatchType               string
+	MaxCPCMicros            int64
+	ForecastDays            int
+	GeoTargetConstants      []string
+	Language                string
+	CurrencyCode            string
+	IncludeKeywordBreakdown bool
+}
+
 // GetKeywordForecast returns projected performance metrics for a set of keywords.
-func (c *Client) GetKeywordForecast(
-	ctx context.Context,
-	keywords []string,
-	maxCPCMicros int64,
-	forecastDays int,
-) (*ForecastResponse, error) {
+//
+// The API returns one campaign-level aggregate per request, so this issues one
+// request per keyword to build the per-keyword breakdown, plus one request with
+// every keyword in a single ad group for the campaign total. The per-keyword
+// figures will not sum to the total: keywords in one ad group compete for the
+// same impressions and the total accounts for that overlap.
+func (c *Client) GetKeywordForecast(ctx context.Context, req ForecastRequest) (*ForecastResponse, error) {
+	if len(req.Keywords) == 0 {
+		return nil, fmt.Errorf("at least one keyword is required")
+	}
+	var err error
+	req.Language, req.GeoTargetConstants, err = c.targeting(req.Language, req.GeoTargetConstants)
+	if err != nil {
+		return nil, err
+	}
+	forecastDays := req.ForecastDays
 	if forecastDays <= 0 {
 		forecastDays = 30
 	}
+	maxCPCMicros := req.MaxCPCMicros
 	if maxCPCMicros <= 0 {
 		maxCPCMicros = 1_000_000
 	}
-	now := time.Now().UTC()
-	startDate := now.Format("2006-01-02")
-	endDate := now.AddDate(0, 0, forecastDays).Format("2006-01-02")
-
-	biddable := make([]adGroupForecastKeyword, 0, len(keywords))
-	for _, kw := range keywords {
-		biddable = append(biddable, adGroupForecastKeyword{
-			Keyword: forecastKeyword{Text: kw, MatchType: "BROAD"},
-		})
+	matchType := strings.ToUpper(strings.TrimSpace(req.MatchType))
+	if matchType == "" {
+		matchType = "BROAD"
+	}
+	if matchType != "BROAD" && matchType != "PHRASE" && matchType != "EXACT" {
+		return nil, fmt.Errorf("match_type must be BROAD, PHRASE or EXACT")
+	}
+	if forecastDays > 364 {
+		return nil, fmt.Errorf("forecast_days must not exceed 364")
 	}
 
-	reqBody := generateForecastMetricsRequest{
-		CampaignForecastSpec: campaignForecastSpec{
-			BiddingStrategy: biddingStrategy{
-				ManualCpcBiddingStrategy: manualCpcBiddingStrategy{
-					MaxCPCBidMicros: strconv.FormatInt(maxCPCMicros, 10),
+	// The forecast period must start after today in the account's time zone.
+	// UTC tomorrow is still "today" for accounts east of UTC around midnight,
+	// so start two days out.
+	period := forecastPeriodFor(time.Now(), forecastDays)
+	startDate, endDate := period.StartDate, period.EndDate
+
+	forecast := func(keywords []string) (KeywordForecastMetrics, error) {
+		infos := make([]forecastKeyword, 0, len(keywords))
+		for _, kw := range keywords {
+			infos = append(infos, forecastKeyword{Text: kw, MatchType: matchType})
+		}
+
+		reqBody := generateForecastMetricsRequest{
+			CurrencyCode:   req.CurrencyCode,
+			ForecastPeriod: dateRange{StartDate: startDate, EndDate: endDate},
+			Campaign: campaignForecast{
+				GeoTargetConstants: req.GeoTargetConstants,
+				BiddingStrategy: biddingStrategy{
+					ManualCpcBiddingStrategy: manualCpcBiddingStrategy{
+						MaxCPCBidMicros: strconv.FormatInt(maxCPCMicros, 10),
+					},
 				},
+				AdGroups: []adGroupForecast{{Keywords: infos}},
 			},
-			StartDate: startDate,
-			EndDate:   endDate,
-			AdGroups:  []adGroupForecast{{Biddable: biddable}},
-		},
+		}
+		if req.Language != "" {
+			reqBody.Campaign.LanguageConstants = []string{req.Language}
+		}
+
+		endpoint := fmt.Sprintf("%s/customers/%s:generateKeywordForecastMetrics", c.baseURL, c.customerID)
+
+		var raw generateForecastMetricsResponse
+		if err := c.post(ctx, endpoint, reqBody, &raw); err != nil {
+			return KeywordForecastMetrics{}, err
+		}
+
+		m := raw.CampaignForecastMetrics
+		if m == nil {
+			return KeywordForecastMetrics{}, fmt.Errorf("forecast response is missing campaignForecastMetrics")
+		}
+		return KeywordForecastMetrics{
+			Clicks:           m.Clicks,
+			CostMicros:       m.CostMicros,
+			AverageCPCMicros: m.AverageCPCMicros,
+		}, nil
 	}
 
-	endpoint := fmt.Sprintf("%s/customers/%s:generateKeywordForecastMetrics", c.baseURL, c.customerID)
-
-	var raw generateForecastMetricsResponse
-	if err := c.post(ctx, endpoint, reqBody, &raw); err != nil {
-		return nil, err
-	}
-
-	var forecastMetrics []KeywordForecastMetrics
-	for _, ag := range raw.AdGroupForecastMetrics {
-		for _, kf := range ag.KeywordForecastMetrics {
-			forecastMetrics = append(forecastMetrics, KeywordForecastMetrics{
-				Text:        kf.Keyword.Text,
-				Impressions: kf.Metrics.Impressions,
-				Clicks:      kf.Metrics.Clicks,
-				CostMicros:  kf.Metrics.CostMicros,
-				CTR:         kf.Metrics.CTR,
-			})
+	perKeyword := make([]KeywordForecastMetrics, 0, len(req.Keywords))
+	if req.IncludeKeywordBreakdown {
+		for _, kw := range req.Keywords {
+			metrics, err := forecast([]string{kw})
+			if err != nil {
+				return nil, fmt.Errorf("forecasting %q: %w", kw, err)
+			}
+			metrics.Text = kw
+			perKeyword = append(perKeyword, metrics)
 		}
 	}
 
+	total, err := forecast(req.Keywords)
+	if err != nil {
+		return nil, fmt.Errorf("forecasting combined ad group: %w", err)
+	}
+
 	return &ForecastResponse{
-		Keywords:     forecastMetrics,
-		ForecastDays: forecastDays,
-		MaxCPCMicros: maxCPCMicros,
+		Keywords:           perKeyword,
+		Total:              total,
+		ForecastDays:       forecastDays,
+		MaxCPCMicros:       maxCPCMicros,
+		StartDate:          startDate,
+		EndDate:            endDate,
+		GeoTargetConstants: req.GeoTargetConstants,
+		Language:           req.Language,
+		CurrencyCode:       req.CurrencyCode,
+		MatchType:          matchType,
 	}, nil
 }
 
+func forecastPeriodFor(now time.Time, days int) dateRange {
+	start := now.UTC().AddDate(0, 0, 2)
+	return dateRange{
+		StartDate: start.Format("2006-01-02"),
+		EndDate:   start.AddDate(0, 0, days-1).Format("2006-01-02"),
+	}
+}
+
 func (c *Client) post(ctx context.Context, endpoint string, body, out any) error {
+	if c.planningLimiter != nil &&
+		(strings.HasSuffix(endpoint, ":generateKeywordIdeas") ||
+			strings.HasSuffix(endpoint, ":generateKeywordHistoricalMetrics") ||
+			strings.HasSuffix(endpoint, ":generateKeywordForecastMetrics")) {
+		if err := c.planningLimiter.Wait(ctx); err != nil {
+			return fmt.Errorf("waiting for planning quota: %w", err)
+		}
+	}
 	reqBytes, err := json.Marshal(body)
 	if err != nil {
 		return fmt.Errorf("marshalling request: %w", err)
@@ -251,8 +409,17 @@ func (c *Client) post(ctx context.Context, endpoint string, body, out any) error
 	return nil
 }
 
-func (c *Client) buildKeywordIdeasRequest(seedKeywords []string, seedURL, language string) generateKeywordIdeasRequest {
-	req := generateKeywordIdeasRequest{Language: language}
+func (c *Client) buildKeywordIdeasRequest(
+	seedKeywords []string,
+	seedURL, language string,
+	geoTargetConstants []string,
+	keywordPlanNetwork string,
+) generateKeywordIdeasRequest {
+	req := generateKeywordIdeasRequest{
+		Language:           language,
+		GeoTargetConstants: geoTargetConstants,
+		KeywordPlanNetwork: keywordPlanNetwork,
+	}
 	switch {
 	case len(seedKeywords) > 0 && seedURL != "":
 		req.KeywordAndURLSeed = &keywordAndURLSeed{URL: seedURL, Keywords: seedKeywords}
@@ -284,5 +451,3 @@ func parseMonthEnum(month string) int32 {
 	}
 	return 0
 }
-
-

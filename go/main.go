@@ -76,6 +76,8 @@ func main() {
 		cfg.DeveloperToken, cfg.ClientID, cfg.ClientSecret, cfg.RefreshToken, cfg.CustomerID, cfg.LoginCustomerID,
 	)
 
+	client.SetDefaultTargeting(cfg.DefaultLanguage, splitAndTrim(cfg.DefaultGeoTargets))
+
 	srv := newServer(client)
 
 	switch *transport {
@@ -145,7 +147,7 @@ func newServer(client *keywordplanner.Client) *mcp.Server {
 	mcp.AddTool(srv,
 		&mcp.Tool{
 			Name:        "get_historical_metrics",
-			Description: "Get historical search volume and competition metrics for a list of specific keywords using Google Ads Keyword Planner.",
+			Description: "Get historical search volume and competition metrics for a list of specific keywords using Google Ads Keyword Planner. Pass geo_target_constants and language, or the volumes cover the whole world in every language.",
 		},
 		func(ctx context.Context, _ *mcp.CallToolRequest, input getHistoricalMetricsInput) (*mcp.CallToolResult, any, error) {
 			return getHistoricalMetrics(ctx, client, input)
@@ -155,7 +157,7 @@ func newServer(client *keywordplanner.Client) *mcp.Server {
 	mcp.AddTool(srv,
 		&mcp.Tool{
 			Name:        "get_keyword_forecast",
-			Description: "Get projected impressions, clicks, and cost for a set of keywords at a given max CPC bid using Google Ads Keyword Planner.",
+			Description: "Forecast clicks, cost and average CPC for keywords in one combined ad group. Optional isolated keyword scenarios are not additive contributions to the total and use an extra API request per keyword. Uses configured targeting defaults when omitted.",
 		},
 		func(ctx context.Context, _ *mcp.CallToolRequest, input getKeywordForecastInput) (*mcp.CallToolResult, any, error) {
 			return getKeywordForecast(ctx, client, input)
@@ -182,21 +184,31 @@ func splitAndTrim(s string) []string {
 // exported JSON schema: the tool only requires that at least one of them be provided,
 // which is enforced at runtime in generateKeywordIdeas rather than by the schema.
 type generateKeywordIdeasInput struct {
-	SeedKeywords []string `json:"seed_keywords,omitempty" jsonschema:"Seed keywords to generate ideas from (e.g. ['C# tutorial', 'dotnet performance']). At least one of seed_keywords or url must be provided."`
-	URL          string   `json:"url,omitempty"           jsonschema:"A URL to generate ideas from (e.g. 'https://devleader.ca'). At least one of seed_keywords or url must be provided."`
-	Language     string   `json:"language,omitempty"      jsonschema:"Language resource name (e.g. 'languageConstants/1000' for English). Omit to use all languages."`
+	SeedKeywords       []string `json:"seed_keywords,omitempty"        jsonschema:"Seed keywords to generate ideas from (e.g. ['C# tutorial', 'dotnet performance']). At least one of seed_keywords or url must be provided."`
+	URL                string   `json:"url,omitempty"                  jsonschema:"A URL to generate ideas from (e.g. 'https://devleader.ca'). At least one of seed_keywords or url must be provided."`
+	Language           string   `json:"language,omitempty"             jsonschema:"Language resource name (e.g. 'languageConstants/1000' for English). Omit to use all languages."`
+	GeoTargetConstants []string `json:"geo_target_constants,omitempty" jsonschema:"Geo target resource names scoping search volumes to specific locations (e.g. ['geoTargetConstants/2036'] for Australia, ['geoTargetConstants/2840'] for the United States). If omitted, the API returns WORLDWIDE aggregate volumes, which for a country-specific keyword can differ from the local figure by an order of magnitude."`
+	KeywordPlanNetwork string   `json:"keyword_plan_network,omitempty" jsonschema:"Either 'GOOGLE_SEARCH' or 'GOOGLE_SEARCH_AND_PARTNERS'. Defaults to GOOGLE_SEARCH_AND_PARTNERS, which reports higher volumes than the search-only figure the Keyword Planner web UI shows by default. Use GOOGLE_SEARCH to match the web UI."`
 }
 
 // getHistoricalMetricsInput is the input schema for the get_historical_metrics tool.
 type getHistoricalMetricsInput struct {
-	Keywords []string `json:"keywords" jsonschema:"List of keywords to get historical search metrics for (e.g. ['dependency injection', 'SOLID principles'])."`
+	Keywords           []string `json:"keywords"                       jsonschema:"List of keywords to get historical search metrics for (e.g. ['dependency injection', 'SOLID principles'])."`
+	Language           string   `json:"language,omitempty"             jsonschema:"Language resource name (e.g. 'languageConstants/1030' for Polish, 'languageConstants/1000' for English). Omit to cover all languages."`
+	GeoTargetConstants []string `json:"geo_target_constants,omitempty" jsonschema:"Locations to report volumes for, as geo target constant resource names (e.g. ['geoTargetConstants/2616'] for Poland). Omit only if you want worldwide volumes."`
+	KeywordPlanNetwork string   `json:"keyword_plan_network,omitempty" jsonschema:"Either 'GOOGLE_SEARCH' or 'GOOGLE_SEARCH_AND_PARTNERS'. Defaults to GOOGLE_SEARCH_AND_PARTNERS. Use GOOGLE_SEARCH to match the Keyword Planner web UI."`
 }
 
 // getKeywordForecastInput is the input schema for the get_keyword_forecast tool.
 type getKeywordForecastInput struct {
-	Keywords     []string `json:"keywords"                 jsonschema:"List of keywords to forecast performance for."`
-	MaxCPCMicros int64    `json:"max_cpc_micros,omitempty" jsonschema:"Maximum CPC bid in micros (1,000,000 = $1.00). Defaults to 1,000,000 if omitted or 0."`
-	ForecastDays int      `json:"forecast_days,omitempty"  jsonschema:"Number of days to forecast. Defaults to 30 if omitted or 0."`
+	Keywords                []string `json:"keywords"                       jsonschema:"List of keywords to forecast performance for."`
+	MaxCPCMicros            int64    `json:"max_cpc_micros,omitempty"       jsonschema:"Maximum CPC bid in micros (1,000,000 = one unit of the account currency). Defaults to 1,000,000 if omitted or 0."`
+	ForecastDays            int      `json:"forecast_days,omitempty"        jsonschema:"Number of days to forecast. Defaults to 30 if omitted or 0."`
+	MatchType               string   `json:"match_type,omitempty"           jsonschema:"Keyword match type to forecast: BROAD, PHRASE or EXACT. Defaults to BROAD."`
+	GeoTargetConstants      []string `json:"geo_target_constants,omitempty" jsonschema:"Locations to forecast for, as geo target constant resource names (e.g. ['geoTargetConstants/2616'] for Poland). Omit only if you want a worldwide forecast."`
+	Language                string   `json:"language,omitempty"             jsonschema:"Language resource name (e.g. 'languageConstants/1030' for Polish, 'languageConstants/1000' for English). Omit to forecast across all languages."`
+	CurrencyCode            string   `json:"currency_code,omitempty"        jsonschema:"Currency for the cost figures (e.g. 'PLN'). Defaults to the account currency."`
+	IncludeKeywordBreakdown bool     `json:"include_keyword_breakdown,omitempty" jsonschema:"Forecast each keyword independently in addition to the combined total. Defaults to false; enabling this uses one extra API request per keyword. Isolated scenarios must not be summed."`
 }
 
 func generateKeywordIdeas(ctx context.Context, client *keywordplanner.Client, input generateKeywordIdeasInput) (*mcp.CallToolResult, any, error) {
@@ -205,7 +217,7 @@ func generateKeywordIdeas(ctx context.Context, client *keywordplanner.Client, in
 		b, _ := json.Marshal(errResult)
 		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(b)}}}, nil, nil
 	}
-	result, err := client.GenerateKeywordIdeas(ctx, input.SeedKeywords, input.URL, input.Language)
+	result, err := client.GenerateKeywordIdeas(ctx, input.SeedKeywords, input.URL, input.Language, input.GeoTargetConstants, input.KeywordPlanNetwork)
 	if err != nil {
 		errResult := map[string]string{"error": fmt.Sprintf("generating keyword ideas: %v", err)}
 		b, _ := json.Marshal(errResult)
@@ -219,7 +231,7 @@ func generateKeywordIdeas(ctx context.Context, client *keywordplanner.Client, in
 }
 
 func getHistoricalMetrics(ctx context.Context, client *keywordplanner.Client, input getHistoricalMetricsInput) (*mcp.CallToolResult, any, error) {
-	result, err := client.GetHistoricalMetrics(ctx, input.Keywords)
+	result, err := client.GetHistoricalMetrics(ctx, input.Keywords, input.Language, input.GeoTargetConstants, input.KeywordPlanNetwork)
 	if err != nil {
 		errResult := map[string]string{"error": fmt.Sprintf("getting historical metrics: %v", err)}
 		b, _ := json.Marshal(errResult)
@@ -233,7 +245,16 @@ func getHistoricalMetrics(ctx context.Context, client *keywordplanner.Client, in
 }
 
 func getKeywordForecast(ctx context.Context, client *keywordplanner.Client, input getKeywordForecastInput) (*mcp.CallToolResult, any, error) {
-	result, err := client.GetKeywordForecast(ctx, input.Keywords, input.MaxCPCMicros, input.ForecastDays)
+	result, err := client.GetKeywordForecast(ctx, keywordplanner.ForecastRequest{
+		Keywords:                input.Keywords,
+		MatchType:               input.MatchType,
+		MaxCPCMicros:            input.MaxCPCMicros,
+		ForecastDays:            input.ForecastDays,
+		GeoTargetConstants:      input.GeoTargetConstants,
+		Language:                input.Language,
+		CurrencyCode:            input.CurrencyCode,
+		IncludeKeywordBreakdown: input.IncludeKeywordBreakdown,
+	})
 	if err != nil {
 		errResult := map[string]string{"error": fmt.Sprintf("getting keyword forecast: %v", err)}
 		b, _ := json.Marshal(errResult)

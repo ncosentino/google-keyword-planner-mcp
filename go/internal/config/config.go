@@ -11,6 +11,9 @@
 // Optional credentials:
 //   - Login customer ID: GOOGLE_ADS_LOGIN_CUSTOMER_ID (manager account ID; required when
 //     GOOGLE_ADS_CUSTOMER_ID is a sub-account accessed through a manager/MCC account)
+//   - Default language: GOOGLE_ADS_DEFAULT_LANGUAGE (e.g. "languageConstants/1001")
+//   - Default geo targets: GOOGLE_ADS_DEFAULT_GEO_TARGETS (comma-separated,
+//     e.g. "geoTargetConstants/2040")
 package config
 
 import (
@@ -27,6 +30,8 @@ const (
 	envRefreshToken    = "GOOGLE_ADS_REFRESH_TOKEN"
 	envCustomerID      = "GOOGLE_ADS_CUSTOMER_ID"
 	envLoginCustomerID = "GOOGLE_ADS_LOGIN_CUSTOMER_ID"
+	envDefaultLanguage = "GOOGLE_ADS_DEFAULT_LANGUAGE"
+	envDefaultGeo      = "GOOGLE_ADS_DEFAULT_GEO_TARGETS"
 	dotEnvFile         = ".env"
 )
 
@@ -45,6 +50,11 @@ type Config struct {
 	// LoginCustomerID is the manager/MCC account ID used as the login-customer-id header.
 	// Required when CustomerID is a sub-account accessed through a manager account.
 	LoginCustomerID string
+	// DefaultLanguage is the language resource name used when a tool call does not set one.
+	DefaultLanguage string
+	// DefaultGeoTargets is a comma-separated list of geo target resource names used when a
+	// tool call does not set any.
+	DefaultGeoTargets string
 }
 
 // Flags holds values parsed from CLI flags.
@@ -69,12 +79,14 @@ func Resolve(flags Flags) Config {
 	dotenv := parseDotEnv()
 
 	return Config{
-		DeveloperToken:  resolve("developer token", flags.DeveloperToken, envDeveloperToken, dotenv),
-		ClientID:        resolve("client ID", flags.ClientID, envClientID, dotenv),
-		ClientSecret:    resolve("client secret", flags.ClientSecret, envClientSecret, dotenv),
-		RefreshToken:    resolve("refresh token", flags.RefreshToken, envRefreshToken, dotenv),
-		CustomerID:      normalizeCustomerID(resolve("customer ID", flags.CustomerID, envCustomerID, dotenv)),
-		LoginCustomerID: normalizeCustomerID(resolve("login customer ID", flags.LoginCustomerID, envLoginCustomerID, dotenv)),
+		DeveloperToken:    resolve("developer token", flags.DeveloperToken, envDeveloperToken, dotenv),
+		ClientID:          resolve("client ID", flags.ClientID, envClientID, dotenv),
+		ClientSecret:      resolve("client secret", flags.ClientSecret, envClientSecret, dotenv),
+		RefreshToken:      resolve("refresh token", flags.RefreshToken, envRefreshToken, dotenv),
+		CustomerID:        normalizeCustomerID(resolve("customer ID", flags.CustomerID, envCustomerID, dotenv)),
+		LoginCustomerID:   normalizeCustomerID(resolve("login customer ID", flags.LoginCustomerID, envLoginCustomerID, dotenv)),
+		DefaultLanguage:   resolve("default language", "", envDefaultLanguage, dotenv),
+		DefaultGeoTargets: resolve("default geo targets", "", envDefaultGeo, dotenv),
 	}
 }
 

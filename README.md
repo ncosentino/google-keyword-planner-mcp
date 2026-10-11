@@ -229,6 +229,8 @@ Credentials are resolved in this priority order: **CLI flag > environment variab
 | Refresh token | `--refresh-token` | `GOOGLE_ADS_REFRESH_TOKEN` | Yes | From one-time OAuth2 flow |
 | Customer ID | `--customer-id` | `GOOGLE_ADS_CUSTOMER_ID` | Yes | Sub-account ID with billing (not the manager account) |
 | Login customer ID | `--login-customer-id` | `GOOGLE_ADS_LOGIN_CUSTOMER_ID` | Yes* | Manager/MCC account ID. Required when using a sub-account. |
+| Default language | -- | `GOOGLE_ADS_DEFAULT_LANGUAGE` | No | Go only. Language resource name used when a tool call sets none, e.g. `languageConstants/1001` (German). |
+| Default geo targets | -- | `GOOGLE_ADS_DEFAULT_GEO_TARGETS` | No | Go only. Comma-separated geo target resource names used when a tool call sets none, e.g. `geoTargetConstants/2040` (Austria). |
 
 > \* Required when `GOOGLE_ADS_CUSTOMER_ID` is a managed sub-account (accessed through a manager/MCC account). Can be omitted if your OAuth credentials have direct access to the customer account.
 
@@ -324,13 +326,32 @@ Projects impressions, clicks, and cost for keywords at a specified maximum CPC b
 - `maxCpcMicros` (optional, default `1000000`) -- maximum CPC bid in micros (1,000,000 = $1.00)
 - `forecastDays` (optional, default `30`) -- number of days to forecast
 
-**Returns:** Per-keyword projected `impressions`, `clicks`, `costMicros`, and `ctr`.
+**Go v25:** Returns `total` for all keywords in one ad group, `keywords` for
+optional isolated scenarios, the inclusive `startDate`/`endDate`, `matchType`,
+and effective targeting. Available metrics are `clicks`, `costMicros`, and
+`averageCpcMicros`; unavailable values are omitted. Impressions, CTR, and
+manual-CPC conversion predictions are not available.
+
+Go additionally accepts `language`, `geo_target_constants`, `match_type`,
+`currency_code`, and `include_keyword_breakdown` (default `false`). The
+breakdown uses an extra request per keyword; these independent scenarios must
+not be summed to obtain the combined total. Planning calls share a per-client
+one-request-per-second gate for the configured customer. Currency values are
+in micros of the requested currency, or the account currency when omitted.
+
+For all Go tools, omitted targeting uses the configured defaults. Pass
+`language: "all"` and `geo_target_constants: []` to override defaults with
+unrestricted targeting. Blank language or geo entries are errors.
 
 ---
 
 ## Go vs C# -- Which Binary to Use?
 
-Both binaries implement identical behavior. Choose based on preference:
+The Go implementation uses repaired Google Ads v25 historical and forecast
+contracts and adds configurable targeting. C# migration and behavioral parity
+are tracked in [#32](https://github.com/ncosentino/google-keyword-planner-mcp/issues/32).
+Go uses snake_case argument names and keyword arrays; C# retains camelCase names
+and comma-separated keyword strings. They are not currently interchangeable.
 
 | | Go | C# AOT |
 |---|---|---|

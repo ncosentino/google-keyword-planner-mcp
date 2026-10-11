@@ -274,12 +274,12 @@ func TestGetHistoricalMetrics_Success_ReturnsMarshaledMetrics(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
-			"metrics": [{
+			"results": [{
 				"text": "dependency injection",
 				"keywordMetrics": {
 					"avgMonthlySearches": "1000",
 					"competition": "MEDIUM",
-					"competitionIndex": 50,
+					"competitionIndex": "50",
 					"lowTopOfPageBidMicros": "100000",
 					"highTopOfPageBidMicros": "500000",
 					"monthlySearchVolumes": []
@@ -346,12 +346,7 @@ func TestGetKeywordForecast_Success_ReturnsMarshaledForecast(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
-			"adGroupForecastMetrics": [{
-				"keywordForecastMetrics": [{
-					"keyword": {"text": "dependency injection", "matchType": "BROAD"},
-					"metrics": {"impressions": 1000, "clicks": 50, "costMicros": 500000, "ctr": 0.05}
-				}]
-			}]
+			"campaignForecastMetrics": {"clicks": 50, "costMicros": "500000"}
 		}`))
 	}))
 	defer srv.Close()
@@ -368,8 +363,8 @@ func TestGetKeywordForecast_Success_ReturnsMarshaledForecast(t *testing.T) {
 	if err := json.Unmarshal([]byte(text), &parsed); err != nil {
 		t.Fatalf("failed to parse result content: %v", err)
 	}
-	if len(parsed.Keywords) != 1 || parsed.Keywords[0].Text != "dependency injection" {
-		t.Errorf("Keywords = %+v, want one entry for %q", parsed.Keywords, "dependency injection")
+	if len(parsed.Keywords) != 0 || parsed.Total.Clicks == nil || *parsed.Total.Clicks != 50 {
+		t.Errorf("forecast = %+v, want combined total of 50 clicks and no isolated scenarios", parsed)
 	}
 	if parsed.ForecastDays != 30 {
 		t.Errorf("ForecastDays = %d, want default of 30", parsed.ForecastDays)
@@ -414,7 +409,7 @@ func TestNewServer_CallHistoricalMetricsTool_ViaRealSession(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"metrics": []}`))
+		_, _ = w.Write([]byte(`{"results": []}`))
 	}))
 	defer srv.Close()
 
@@ -457,7 +452,7 @@ func TestNewServer_CallKeywordForecastTool_ViaRealSession(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"adGroupForecastMetrics": []}`))
+		_, _ = w.Write([]byte(`{"campaignForecastMetrics": {}}`))
 	}))
 	defer srv.Close()
 
