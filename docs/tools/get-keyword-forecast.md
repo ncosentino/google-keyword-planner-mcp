@@ -4,9 +4,10 @@ description: Forecast clicks and cost for a combined keyword campaign using Goog
 
 # get_keyword_forecast
 
-The Go implementation forecasts a combined ad group using Google Ads v25.
-C# contract migration is tracked in [#33](https://github.com/ncosentino/google-keyword-planner-mcp/issues/33).
-The following describes the repaired Go contract.
+Both implementations forecast a combined ad group using Google Ads v25.
+The following uses Go's snake_case names and array inputs. C# uses camelCase
+names and comma-separated `keywords` and `geoTargetConstants` strings.
+For C#, an empty geography string explicitly requests worldwide targeting.
 
 ## Parameters
 

@@ -308,7 +308,7 @@ At least one of `seedKeywords` or `url` must be provided.
 **Go server only:**
 - `seed_keywords` and the other parameters use snake_case names.
 - `language` and `geo_target_constants` accept ISO codes (`"de"`, `["AT", "DE"]`) as well as resource names. Regions and cities have no code; look them up with `search_geo_targets`.
-- `limit` (optional, default `50`) -- maximum number of ideas, highest search volume first. `totalFound` in the response says how many the API returned.
+- `limit` (optional, default `50`) -- maximum number of ideas, highest search volume first across all API pages. Use `-1` for all ideas. `totalFound` counts ideas before filtering and truncation.
 - `min_monthly_searches` (optional) -- drop ideas below this average monthly search volume.
 - `include_monthly_volumes` (optional, default `false`) -- add the 12-month `monthlySearchVolumes` to each idea.
 - Each idea also carries `competitionIndex`, and the response echoes the `language` and `geoTargetConstants` it used.
@@ -369,11 +369,12 @@ Finds locations by name so they can be passed as `geo_target_constants`.
 
 ## Go vs C# -- Which Binary to Use?
 
-The Go implementation uses repaired Google Ads v25 historical and forecast
-contracts and adds configurable targeting. C# migration and behavioral parity
-are tracked in [#32](https://github.com/ncosentino/google-keyword-planner-mcp/issues/32).
+Both implementations use repaired Google Ads v25 historical and forecast
+contracts and configurable targeting. Feature parity follow-ups are tracked
+in [#32](https://github.com/ncosentino/google-keyword-planner-mcp/issues/32).
 Go uses snake_case argument names and keyword arrays; C# retains camelCase names
-and comma-separated keyword strings. They are not currently interchangeable.
+and comma-separated keyword strings. Existing input formats are intentionally
+preserved, so callers must use the argument names and formats for their binary.
 
 | | Go | C# AOT |
 |---|---|---|

@@ -5,9 +5,9 @@ description: Compare the Go and C# Native AOT implementations of the Google Keyw
 # Go vs C#
 
 Both implementations expose keyword tools and share the transport contract,
-but they are not currently behaviorally interchangeable. Go uses repaired
-Google Ads v25 contracts and supports per-call and default targeting. The
-C# migration is tracked in [#32](https://github.com/ncosentino/google-keyword-planner-mcp/issues/32).
+but their existing argument formats are deliberately different. Both use
+repaired Google Ads v25 contracts and per-call and default targeting. Remaining
+feature parity work is tracked in [#32](https://github.com/ncosentino/google-keyword-planner-mcp/issues/32).
 Go accepts snake_case arguments and keyword arrays; C# preserves camelCase
 arguments and comma-separated keyword strings.
 
