@@ -128,7 +128,7 @@ internal sealed partial class KeywordPlannerClient(
         if (forecastDays > 364)
             throw new ArgumentException("forecastDays must not exceed 364.");
         if (maxCpcMicros <= 0) maxCpcMicros = 1_000_000;
-        var normalizedMatchType = string.IsNullOrEmpty(matchType) ? "BROAD" : matchType.Trim().ToUpperInvariant();
+        var normalizedMatchType = string.IsNullOrWhiteSpace(matchType) ? "BROAD" : matchType.Trim().ToUpperInvariant();
         if (normalizedMatchType is not ("BROAD" or "PHRASE" or "EXACT"))
             throw new ArgumentException("matchType must be BROAD, PHRASE, or EXACT.");
         var targeting = await ResolveTargetingAsync(language, geoTargetConstants, cancellationToken);

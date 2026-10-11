@@ -1,4 +1,6 @@
 using System.Net;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using KeywordPlannerMcp.KeywordPlanner;
 using Xunit;
 
@@ -44,6 +46,64 @@ public sealed class SharedApiFixtureTests
         Assert.Equal(5000, keyword.AvgMonthlySearches);
         Assert.Equal(23, keyword.CompetitionIndex);
         Assert.Equal(new MonthlyVolume(2026, 9, 4500), Assert.Single(keyword.MonthlySearchVolumes));
+    }
+
+    [Fact]
+    public async Task SharedIdeaFixture()
+    {
+        using var client = CreateClient("ideas.json");
+        var result = await client.GenerateKeywordIdeasAsync(["go"], null, null,
+            options: new IdeaOptions(IncludeMonthlyVolumes: true));
+        var idea = Assert.Single(result.Ideas);
+        Assert.Equal(1, result.TotalFound);
+        Assert.Equal(5000, idea.AvgMonthlySearches);
+        Assert.Equal(new MonthlyVolume(2026, 9, 4500), Assert.Single(idea.MonthlySearchVolumes!));
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(result, KwpJsonContext.Default.KeywordIdeasResponse));
+        Assert.Equal(0, json.RootElement.GetProperty("ideas")[0].GetProperty("competitionIndex").GetInt32());
+    }
+
+    private sealed class RequestHandler : HttpMessageHandler
+    {
+        public JsonNode? Request { get; private set; }
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var oauth = request.RequestUri!.Host == "oauth2.googleapis.com";
+            if (!oauth)
+                Request = JsonNode.Parse(await request.Content!.ReadAsStringAsync(cancellationToken));
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(oauth
+                    ? """{"access_token":"fake","expires_in":3600}"""
+                    : File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", "forecast.json")))
+            };
+        }
+    }
+
+    private sealed class FixedClock : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => new(2026, 10, 11, 0, 0, 0, TimeSpan.Zero);
+    }
+
+    [Fact]
+    public async Task SharedForecastRequestFixture()
+    {
+        using var handler = new RequestHandler();
+        using var http = new HttpClient(handler);
+        using var provider = new OAuth2TokenProvider("id", "secret", "refresh", http);
+        using var client = new KeywordPlannerClient("token", "123", null, provider, http,
+            timeProvider: new FixedClock(), planningPacer: new ImmediatePacer());
+        await client.GetKeywordForecastAsync(["go"], 2000000, 30,
+            language: "languageConstants/1001", geoTargetConstants: ["geoTargetConstants/2040"],
+            matchType: "PHRASE", currencyCode: "EUR");
+        var period = handler.Request!["forecastPeriod"]!;
+        Assert.Equal("2026-10-13", period["startDate"]!.GetValue<string>());
+        Assert.Equal("2026-11-11", period["endDate"]!.GetValue<string>());
+        period["startDate"] = "$start";
+        period["endDate"] = "$end";
+        var expected = JsonNode.Parse(File.ReadAllText(Path.Combine(
+            AppContext.BaseDirectory, "fixtures", "forecast-request.json")));
+        Assert.True(JsonNode.DeepEquals(expected, handler.Request));
     }
 
     [Theory]

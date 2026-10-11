@@ -272,10 +272,24 @@ public sealed class KeywordPlannerParityTests
         await Assert.ThrowsAsync<ArgumentException>(() => client.GetHistoricalMetricsAsync(["a"], keywordPlanNetwork: "other"));
         await Assert.ThrowsAsync<ArgumentException>(() => client.GetKeywordForecastAsync(["a"], 1, 365));
         await Assert.ThrowsAsync<ArgumentException>(() => client.GetKeywordForecastAsync(["a"], 1, 1, matchType: "other"));
-        await Assert.ThrowsAsync<ArgumentException>(() => client.GetKeywordForecastAsync(["a"], 1, 1, matchType: " "));
         await Assert.ThrowsAsync<ArgumentException>(() => client.GetKeywordForecastAsync([], 1, 1));
         Assert.Empty(handler.Bodies);
         Assert.Equal(0, handler.TokenCalls);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" ")]
+    public async Task Forecast_OmittedOrWhitespaceMatchTypeDefaultsToBroad(string? matchType)
+    {
+        using var handler = new Handler();
+        using var client = Client(handler, new RecordingPacer());
+        var result = await client.GetKeywordForecastAsync(["a"], 1, 1, matchType: matchType);
+        Assert.Equal("BROAD", result.MatchType);
+        using var json = JsonDocument.Parse(Assert.Single(handler.Bodies));
+        Assert.Equal("BROAD", json.RootElement.GetProperty("campaign").GetProperty("adGroups")[0]
+            .GetProperty("keywords")[0].GetProperty("matchType").GetString());
     }
 
     [Fact]

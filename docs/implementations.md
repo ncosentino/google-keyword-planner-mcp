@@ -6,10 +6,36 @@ description: Compare the Go and C# Native AOT implementations of the Google Keyw
 
 Both implementations expose keyword tools and share the transport contract,
 but their existing argument formats are deliberately different. Both use
-repaired Google Ads v25 contracts and per-call and default targeting. Remaining
-feature parity work is tracked in [#32](https://github.com/ncosentino/google-keyword-planner-mcp/issues/32).
+repaired Google Ads v25 contracts and per-call and default targeting. Integration
+evidence is tracked in [#32](https://github.com/ncosentino/google-keyword-planner-mcp/issues/32).
 Go accepts snake_case arguments and keyword arrays; C# preserves camelCase
 arguments and comma-separated keyword strings.
+
+| Behavior | Go | C# |
+|---|---|---|
+| Historical v25 `results` and string integers | Supported | Supported |
+| Forecast joint total, optional metrics, inclusive future dates | Supported | Supported |
+| Explicit unrestricted targeting overrides | Supported | Supported |
+| ISO/name resolution and location discovery | Supported | Supported |
+| Complete idea pagination before ranking/filtering/limiting | Supported | Supported |
+| Optional monthly volumes and `totalFound` | Supported | Supported |
+| Opt-in forecast scenarios, at most five workers, cancellation | Supported | Supported |
+| Shared planning pace within a client | One request/second | One request/second |
+
+Existing wire-format differences remain: Go may omit zero historical bid
+estimates and empty monthly-volume arrays; C# includes those values. Forecast
+optional metrics preserve absent versus zero in both. `competitionIndex: 0`
+is included in both idea responses. Empty language strings mean omission;
+use `all` to remove a configured language. Explicit worldwide geography is
+an empty array in Go and an empty string in C#.
+
+Quota pacing is local to one configured client/process, not a distributed
+customer-level limiter. Multiple instances sharing a Google Ads customer must
+coordinate their aggregate traffic.
+
+CI consumes shared synthetic v25 request/response fixtures in both suites,
+checks Go data races, and publishes C# Native AOT. These checks do not substitute
+for an authenticated live API probe.
 
 ## Comparison
 

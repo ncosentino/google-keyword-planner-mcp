@@ -6,7 +6,7 @@ type KeywordIdea struct {
 	Text                   string          `json:"text"`
 	AvgMonthlySearches     int64           `json:"avgMonthlySearches"`
 	Competition            string          `json:"competition"`
-	CompetitionIndex       int32           `json:"competitionIndex,omitempty"`
+	CompetitionIndex       int32           `json:"competitionIndex"`
 	LowTopOfPageBidMicros  int64           `json:"lowTopOfPageBidMicros,omitempty"`
 	HighTopOfPageBidMicros int64           `json:"highTopOfPageBidMicros,omitempty"`
 	MonthlySearchVolumes   []MonthlyVolume `json:"monthlySearchVolumes,omitempty"`
