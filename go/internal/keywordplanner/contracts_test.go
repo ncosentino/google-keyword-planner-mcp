@@ -104,8 +104,19 @@ func TestPlanningQuotaCancellationPreventsHTTPRequest(t *testing.T) {
 	client.planningLimiter = limiter
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := client.GetKeywordForecast(ctx, ForecastRequest{Keywords: []string{"a"}})
+	err := client.post(ctx, server.URL+":generateKeywordForecastMetrics", struct{}{}, &struct{}{})
 	if !errors.Is(err, context.Canceled) || limiter.calls != 1 {
 		t.Fatalf("error = %v, quota calls = %d", err, limiter.calls)
+	}
+
+}
+
+func TestForecastCancelledBeforeSchedulingReturnsNoResult(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	client := NewTestClient("token", "123", "", "http://unused.invalid", &http.Client{})
+	result, err := client.GetKeywordForecast(ctx, ForecastRequest{Keywords: []string{"a", "b"}, IncludeKeywordBreakdown: true})
+	if result != nil || !errors.Is(err, context.Canceled) {
+		t.Fatalf("result = %+v, error = %v", result, err)
 	}
 }

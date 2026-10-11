@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/ncosentino/google-keyword-planner-mcp/go/internal/keywordplanner"
@@ -204,9 +205,9 @@ func TestGetKeywordForecast_SendsV25RequestShape(t *testing.T) {
 func TestGetKeywordForecast_ForecastsEachKeywordAndTheCombinedAdGroup(t *testing.T) {
 	t.Parallel()
 
-	var requests int
+	var requests atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requests++
+		requests.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"campaignForecastMetrics": map[string]any{
@@ -226,8 +227,8 @@ func TestGetKeywordForecast_ForecastsEachKeywordAndTheCombinedAdGroup(t *testing
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if requests != 3 {
-		t.Errorf("made %d requests, want 3 (one per keyword plus the combined total)", requests)
+	if got := requests.Load(); got != 3 {
+		t.Errorf("made %d requests, want 3 (one per keyword plus the combined total)", got)
 	}
 	if len(result.Keywords) != 2 {
 		t.Fatalf("got %d per-keyword forecasts, want 2", len(result.Keywords))
