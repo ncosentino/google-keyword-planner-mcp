@@ -10,14 +10,26 @@ internal sealed record KeywordIdea(
     long AvgMonthlySearches,
     string Competition,
     long LowTopOfPageBidMicros,
-    long HighTopOfPageBidMicros);
+    long HighTopOfPageBidMicros,
+    int CompetitionIndex = 0,
+    IReadOnlyList<MonthlyVolume>? MonthlySearchVolumes = null);
+
+internal sealed record IdeaOptions(int Limit = 0, long MinMonthlySearches = 0, bool IncludeMonthlyVolumes = false);
 
 /// <summary>The result of generating keyword ideas.</summary>
 internal sealed record KeywordIdeasResponse(
     IReadOnlyList<string>? SeedKeywords,
     string? Url,
     IReadOnlyList<KeywordIdea> Ideas,
-    int Count);
+    int Count,
+    int TotalFound = 0,
+    string? Language = null,
+    IReadOnlyList<string>? GeoTargetConstants = null);
+
+internal sealed record GeoTarget(
+    string ResourceName, string Name, string CanonicalName, string CountryCode, string TargetType, long Reach);
+
+internal sealed record GeoTargetSearchResponse(IReadOnlyList<GeoTarget> GeoTargets, int Count);
 
 /// <summary>Monthly search volume for a keyword.</summary>
 internal sealed record MonthlyVolume(int Year, int Month, long MonthlySearches);
@@ -64,6 +76,9 @@ internal sealed record ErrorResult(string Error);
 
 internal sealed class GenerateKeywordIdeasRequest
 {
+    [JsonPropertyName("pageToken")]
+    public string? PageToken { get; set; }
+
     [JsonPropertyName("language")]
     public string? Language { get; set; }
 
@@ -106,6 +121,9 @@ internal sealed class KeywordAndUrlSeed
 
 internal sealed class GenerateKeywordIdeasResponse
 {
+    [JsonPropertyName("nextPageToken")]
+    public string? NextPageToken { get; set; }
+
     [JsonPropertyName("results")]
     public List<KeywordIdeaResult>? Results { get; set; }
 }
@@ -121,6 +139,12 @@ internal sealed class KeywordIdeaResult
 
 internal sealed class KeywordIdeaMetrics
 {
+    [JsonPropertyName("competitionIndex")]
+    public string? CompetitionIndex { get; set; }
+
+    [JsonPropertyName("monthlySearchVolumes")]
+    public List<RawMonthlyVolume>? MonthlySearchVolumes { get; set; }
+
     [JsonPropertyName("avgMonthlySearches")]
     public string? AvgMonthlySearches { get; set; }
 
@@ -289,7 +313,51 @@ internal sealed class TokenResponse
     public int ExpiresIn { get; set; }
 }
 
+internal sealed record ConstantSearchRequest(string Query, string? PageToken = null);
+internal sealed class ConstantSearchResponse
+{
+    public List<ConstantSearchRow> Results { get; set; } = [];
+    public string? NextPageToken { get; set; }
+}
+internal sealed class ConstantSearchRow
+{
+    public LanguageConstant LanguageConstant { get; set; } = new();
+    public GeoTargetConstant GeoTargetConstant { get; set; } = new();
+}
+internal sealed class LanguageConstant
+{
+    public string Id { get; set; } = "";
+    public string Code { get; set; } = "";
+    public string Name { get; set; } = "";
+}
+internal sealed class GeoTargetConstant
+{
+    public string Id { get; set; } = "";
+    public string ResourceName { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string CanonicalName { get; set; } = "";
+    public string CountryCode { get; set; } = "";
+    public string TargetType { get; set; } = "";
+}
+internal sealed record SuggestGeoTargetsRequest(string Locale, string? CountryCode, LocationNames LocationNames);
+internal sealed record LocationNames(IReadOnlyList<string> Names);
+internal sealed class SuggestGeoTargetsResponse
+{
+    public List<GeoTargetSuggestion> GeoTargetConstantSuggestions { get; set; } = [];
+}
+internal sealed class GeoTargetSuggestion
+{
+    public GeoTargetConstant GeoTargetConstant { get; set; } = new();
+    [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]
+    public long Reach { get; set; }
+}
+
 /// <summary>System.Text.Json source generation context for AOT-safe serialization.</summary>
+[JsonSerializable(typeof(ConstantSearchRequest))]
+[JsonSerializable(typeof(ConstantSearchResponse))]
+[JsonSerializable(typeof(SuggestGeoTargetsRequest))]
+[JsonSerializable(typeof(SuggestGeoTargetsResponse))]
+[JsonSerializable(typeof(GeoTargetSearchResponse))]
 [JsonSerializable(typeof(GenerateKeywordIdeasRequest))]
 [JsonSerializable(typeof(GenerateKeywordIdeasResponse))]
 [JsonSerializable(typeof(GenerateHistoricalMetricsRequest))]
