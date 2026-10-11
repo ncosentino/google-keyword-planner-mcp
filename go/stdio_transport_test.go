@@ -58,8 +58,8 @@ func TestStdioTransport_ServesRealSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListTools over stdio-equivalent transport: %v", err)
 	}
-	if len(toolsResult.Tools) != 3 {
-		t.Errorf("got %d tools over stdio-equivalent transport, want 3", len(toolsResult.Tools))
+	if len(toolsResult.Tools) != 4 {
+		t.Errorf("got %d tools over stdio-equivalent transport, want 4", len(toolsResult.Tools))
 	}
 
 	callResult, err := clientSession.CallTool(ctx, &mcp.CallToolParams{

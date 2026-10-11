@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -35,10 +36,12 @@ type Client struct {
 	defaultLanguage   string
 	defaultGeoTargets []string
 	planningLimiter   interface{ Wait(context.Context) error }
+	lookup            constantLookup
 }
 
-// SetDefaultTargeting sets the language and geo target resource names used by calls
-// that leave them empty. Empty defaults mean no restriction.
+// SetDefaultTargeting sets the language and geo targets used by calls that leave
+// them empty. Both accept the forms ResolveLanguage and ResolveGeoTargets accept.
+// Empty defaults mean no restriction.
 func (c *Client) SetDefaultTargeting(language string, geoTargets []string) {
 	c.defaultLanguage = language
 	c.defaultGeoTargets = geoTargets
@@ -133,6 +136,9 @@ func NewTestClient(developerToken, customerID, loginCustomerID, baseURL string, 
 // keywordPlanNetwork is "GOOGLE_SEARCH" or "GOOGLE_SEARCH_AND_PARTNERS"; when
 // empty the API default (search and partners) applies, which reads higher than
 // the search-only figure the Keyword Planner web UI shows by default.
+//
+// Ideas are returned sorted by average monthly searches, highest first; opts
+// filters and truncates that list.
 func (c *Client) GenerateKeywordIdeas(
 	ctx context.Context,
 	seedKeywords []string,
@@ -140,8 +146,9 @@ func (c *Client) GenerateKeywordIdeas(
 	language string,
 	geoTargetConstants []string,
 	keywordPlanNetwork string,
+	opts IdeaOptions,
 ) (*KeywordIdeasResponse, error) {
-	language, geoTargetConstants, err := c.targeting(language, geoTargetConstants)
+	language, geoTargetConstants, err := c.resolveTargeting(ctx, language, geoTargetConstants)
 	if err != nil {
 		return nil, err
 	}
@@ -149,26 +156,56 @@ func (c *Client) GenerateKeywordIdeas(
 	endpoint := fmt.Sprintf("%s/customers/%s:generateKeywordIdeas", c.baseURL, c.customerID)
 
 	var raw generateKeywordIdeasResponse
-	if err := c.post(ctx, endpoint, reqBody, &raw); err != nil {
-		return nil, err
+	seenPages := make(map[string]bool)
+	for {
+		var page generateKeywordIdeasResponse
+		if err := c.post(ctx, endpoint, reqBody, &page); err != nil {
+			return nil, err
+		}
+		raw.Results = append(raw.Results, page.Results...)
+		if page.NextPageToken == "" {
+			break
+		}
+		if seenPages[page.NextPageToken] {
+			return nil, fmt.Errorf("keyword ideas API repeated a pagination token")
+		}
+		seenPages[page.NextPageToken] = true
+		reqBody.PageToken = page.NextPageToken
 	}
 
 	ideas := make([]KeywordIdea, 0, len(raw.Results))
 	for _, r := range raw.Results {
-		ideas = append(ideas, KeywordIdea{
+		idea := KeywordIdea{
 			Text:                   r.Text,
 			AvgMonthlySearches:     parseI64(r.KeywordIdeaMetrics.AvgMonthlySearches),
 			Competition:            r.KeywordIdeaMetrics.Competition,
+			CompetitionIndex:       int32(parseI64(r.KeywordIdeaMetrics.CompetitionIndex)),
 			LowTopOfPageBidMicros:  parseI64(r.KeywordIdeaMetrics.LowTopOfPageBidMicros),
 			HighTopOfPageBidMicros: parseI64(r.KeywordIdeaMetrics.HighTopOfPageBidMicros),
-		})
+		}
+		if idea.AvgMonthlySearches < opts.MinMonthlySearches {
+			continue
+		}
+		if opts.IncludeMonthlyVolumes {
+			idea.MonthlySearchVolumes = toMonthlyVolumes(r.KeywordIdeaMetrics.MonthlySearchVolumes)
+		}
+		ideas = append(ideas, idea)
+	}
+	sort.SliceStable(ideas, func(i, j int) bool {
+		return ideas[i].AvgMonthlySearches > ideas[j].AvgMonthlySearches
+	})
+	if opts.Limit > 0 && len(ideas) > opts.Limit {
+		ideas = ideas[:opts.Limit]
 	}
 
 	return &KeywordIdeasResponse{
-		SeedKeywords: seedKeywords,
-		URL:          seedURL,
-		Ideas:        ideas,
-		Count:        len(ideas),
+		SeedKeywords:       seedKeywords,
+		URL:                seedURL,
+		Ideas:              ideas,
+		Count:              len(ideas),
+		TotalFound:         len(raw.Results),
+		Language:           language,
+		GeoTargetConstants: geoTargetConstants,
 	}, nil
 }
 
@@ -185,7 +222,7 @@ func (c *Client) GetHistoricalMetrics(
 	geoTargetConstants []string,
 	keywordPlanNetwork string,
 ) (*HistoricalMetricsResponse, error) {
-	language, geoTargetConstants, err := c.targeting(language, geoTargetConstants)
+	language, geoTargetConstants, err := c.resolveTargeting(ctx, language, geoTargetConstants)
 	if err != nil {
 		return nil, err
 	}
@@ -204,14 +241,6 @@ func (c *Client) GetHistoricalMetrics(
 
 	metrics := make([]KeywordMetrics, 0, len(raw.Results))
 	for _, r := range raw.Results {
-		monthly := make([]MonthlyVolume, 0, len(r.KeywordMetrics.MonthlySearchVolumes))
-		for _, m := range r.KeywordMetrics.MonthlySearchVolumes {
-			monthly = append(monthly, MonthlyVolume{
-				Year:            int32(parseI64(m.Year)),
-				Month:           parseMonthEnum(m.Month),
-				MonthlySearches: parseI64(m.MonthlySearches),
-			})
-		}
 		metrics = append(metrics, KeywordMetrics{
 			Text:                   r.Text,
 			AvgMonthlySearches:     parseI64(r.KeywordMetrics.AvgMonthlySearches),
@@ -219,7 +248,7 @@ func (c *Client) GetHistoricalMetrics(
 			CompetitionIndex:       int32(parseI64(r.KeywordMetrics.CompetitionIndex)),
 			LowTopOfPageBidMicros:  parseI64(r.KeywordMetrics.LowTopOfPageBidMicros),
 			HighTopOfPageBidMicros: parseI64(r.KeywordMetrics.HighTopOfPageBidMicros),
-			MonthlySearchVolumes:   monthly,
+			MonthlySearchVolumes:   toMonthlyVolumes(r.KeywordMetrics.MonthlySearchVolumes),
 		})
 	}
 
@@ -254,7 +283,7 @@ func (c *Client) GetKeywordForecast(ctx context.Context, req ForecastRequest) (*
 		return nil, fmt.Errorf("at least one keyword is required")
 	}
 	var err error
-	req.Language, req.GeoTargetConstants, err = c.targeting(req.Language, req.GeoTargetConstants)
+	req.Language, req.GeoTargetConstants, err = c.resolveTargeting(ctx, req.Language, req.GeoTargetConstants)
 	if err != nil {
 		return nil, err
 	}
@@ -429,6 +458,18 @@ func (c *Client) buildKeywordIdeasRequest(
 		req.KeywordSeed = &keywordSeed{Keywords: seedKeywords}
 	}
 	return req
+}
+
+func toMonthlyVolumes(raw []monthlySearchVolume) []MonthlyVolume {
+	monthly := make([]MonthlyVolume, 0, len(raw))
+	for _, m := range raw {
+		monthly = append(monthly, MonthlyVolume{
+			Year:            int32(parseI64(m.Year)),
+			Month:           parseMonthEnum(m.Month),
+			MonthlySearches: parseI64(m.MonthlySearches),
+		})
+	}
+	return monthly
 }
 
 func parseI64(s string) int64 {

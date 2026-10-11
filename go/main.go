@@ -30,6 +30,9 @@ import (
 
 var version = "dev"
 
+// defaultIdeaLimit caps generate_keyword_ideas when the caller sets no limit.
+const defaultIdeaLimit = 50
+
 func main() {
 	developerToken := flag.String("developer-token", "", "Google Ads developer token")
 	clientID := flag.String("client-id", "", "OAuth2 client ID")
@@ -137,7 +140,7 @@ func newServer(client *keywordplanner.Client) *mcp.Server {
 	mcp.AddTool(srv,
 		&mcp.Tool{
 			Name:        "generate_keyword_ideas",
-			Description: "Generate keyword ideas from seed keywords and/or a URL using Google Ads Keyword Planner. Returns related keywords with average monthly search volume, competition level, and CPC estimates.",
+			Description: "Generate keyword ideas from seed keywords and/or a URL using Google Ads Keyword Planner. Returns related keywords sorted by average monthly search volume, with competition level and CPC estimates. Returns the top 50 by default; see limit, min_monthly_searches and include_monthly_volumes.",
 		},
 		func(ctx context.Context, _ *mcp.CallToolRequest, input generateKeywordIdeasInput) (*mcp.CallToolResult, any, error) {
 			return generateKeywordIdeas(ctx, client, input)
@@ -164,6 +167,16 @@ func newServer(client *keywordplanner.Client) *mcp.Server {
 		},
 	)
 
+	mcp.AddTool(srv,
+		&mcp.Tool{
+			Name:        "search_geo_targets",
+			Description: "Find locations (countries, regions, cities) by name and return their geo target resource names for use as geo_target_constants in the other tools. Countries can be passed to those tools directly as ISO codes; use this for regions and cities.",
+		},
+		func(ctx context.Context, _ *mcp.CallToolRequest, input searchGeoTargetsInput) (*mcp.CallToolResult, any, error) {
+			return searchGeoTargets(ctx, client, input)
+		},
+	)
+
 	return srv
 }
 
@@ -184,18 +197,21 @@ func splitAndTrim(s string) []string {
 // exported JSON schema: the tool only requires that at least one of them be provided,
 // which is enforced at runtime in generateKeywordIdeas rather than by the schema.
 type generateKeywordIdeasInput struct {
-	SeedKeywords       []string `json:"seed_keywords,omitempty"        jsonschema:"Seed keywords to generate ideas from (e.g. ['C# tutorial', 'dotnet performance']). At least one of seed_keywords or url must be provided."`
-	URL                string   `json:"url,omitempty"                  jsonschema:"A URL to generate ideas from (e.g. 'https://devleader.ca'). At least one of seed_keywords or url must be provided."`
-	Language           string   `json:"language,omitempty"             jsonschema:"Language resource name (e.g. 'languageConstants/1000' for English). Omit to use all languages."`
-	GeoTargetConstants []string `json:"geo_target_constants,omitempty" jsonschema:"Geo target resource names scoping search volumes to specific locations (e.g. ['geoTargetConstants/2036'] for Australia, ['geoTargetConstants/2840'] for the United States). If omitted, the API returns WORLDWIDE aggregate volumes, which for a country-specific keyword can differ from the local figure by an order of magnitude."`
-	KeywordPlanNetwork string   `json:"keyword_plan_network,omitempty" jsonschema:"Either 'GOOGLE_SEARCH' or 'GOOGLE_SEARCH_AND_PARTNERS'. Defaults to GOOGLE_SEARCH_AND_PARTNERS, which reports higher volumes than the search-only figure the Keyword Planner web UI shows by default. Use GOOGLE_SEARCH to match the web UI."`
+	SeedKeywords          []string `json:"seed_keywords,omitempty"           jsonschema:"Seed keywords to generate ideas from (e.g. ['C# tutorial', 'dotnet performance']). At least one of seed_keywords or url must be provided."`
+	URL                   string   `json:"url,omitempty"                     jsonschema:"A URL to generate ideas from (e.g. 'https://devleader.ca'). At least one of seed_keywords or url must be provided."`
+	Language              string   `json:"language,omitempty"                jsonschema:"Language as an ISO code (e.g. 'de', 'en') or a resource name (e.g. 'languageConstants/1001'). Omit to use the server default, or all languages if none is configured."`
+	GeoTargetConstants    []string `json:"geo_target_constants,omitempty"    jsonschema:"Locations to scope search volumes to, as ISO country codes (e.g. ['AT', 'DE']) or resource names (e.g. ['geoTargetConstants/2040']). Use search_geo_targets to find regions and cities. Omit to use the server default; with no default the API returns WORLDWIDE volumes, which can differ from the local figure by an order of magnitude."`
+	KeywordPlanNetwork    string   `json:"keyword_plan_network,omitempty"    jsonschema:"Either 'GOOGLE_SEARCH' or 'GOOGLE_SEARCH_AND_PARTNERS'. Defaults to GOOGLE_SEARCH_AND_PARTNERS, which reports higher volumes than the search-only figure the Keyword Planner web UI shows by default. Use GOOGLE_SEARCH to match the web UI."`
+	Limit                 int      `json:"limit,omitempty"                   jsonschema:"Maximum number of ideas to return, highest search volume first across all pages. Defaults to 50; use -1 for all ideas. totalFound counts all retrieved ideas before filtering."`
+	MinMonthlySearches    int64    `json:"min_monthly_searches,omitempty"    jsonschema:"Drop ideas with fewer average monthly searches than this. Defaults to 0 (keep all)."`
+	IncludeMonthlyVolumes bool     `json:"include_monthly_volumes,omitempty" jsonschema:"Include the search volume of each of the last 12 months per idea, to judge seasonality. Defaults to false to keep the response small."`
 }
 
 // getHistoricalMetricsInput is the input schema for the get_historical_metrics tool.
 type getHistoricalMetricsInput struct {
 	Keywords           []string `json:"keywords"                       jsonschema:"List of keywords to get historical search metrics for (e.g. ['dependency injection', 'SOLID principles'])."`
-	Language           string   `json:"language,omitempty"             jsonschema:"Language resource name (e.g. 'languageConstants/1030' for Polish, 'languageConstants/1000' for English). Omit to cover all languages."`
-	GeoTargetConstants []string `json:"geo_target_constants,omitempty" jsonschema:"Locations to report volumes for, as geo target constant resource names (e.g. ['geoTargetConstants/2616'] for Poland). Omit only if you want worldwide volumes."`
+	Language           string   `json:"language,omitempty"             jsonschema:"Language as an ISO code (e.g. 'de', 'en') or a resource name (e.g. 'languageConstants/1001'). Omit to use the server default, or all languages if none is configured."`
+	GeoTargetConstants []string `json:"geo_target_constants,omitempty" jsonschema:"Locations to report volumes for, as ISO country codes (e.g. ['AT', 'DE']) or resource names (e.g. ['geoTargetConstants/2040']). Use search_geo_targets to find regions and cities. Omit to use the server default, or worldwide volumes if none is configured."`
 	KeywordPlanNetwork string   `json:"keyword_plan_network,omitempty" jsonschema:"Either 'GOOGLE_SEARCH' or 'GOOGLE_SEARCH_AND_PARTNERS'. Defaults to GOOGLE_SEARCH_AND_PARTNERS. Use GOOGLE_SEARCH to match the Keyword Planner web UI."`
 }
 
@@ -211,13 +227,32 @@ type getKeywordForecastInput struct {
 	IncludeKeywordBreakdown bool     `json:"include_keyword_breakdown,omitempty" jsonschema:"Forecast each keyword independently in addition to the combined total. Defaults to false; enabling this uses one extra API request per keyword. Isolated scenarios must not be summed."`
 }
 
+// searchGeoTargetsInput is the input schema for the search_geo_targets tool.
+type searchGeoTargetsInput struct {
+	Names       []string `json:"names"                  jsonschema:"Location names to search for (e.g. ['Wien', 'Steiermark'])."`
+	CountryCode string   `json:"country_code,omitempty" jsonschema:"ISO country code restricting the search to one country (e.g. 'AT')."`
+	Locale      string   `json:"locale,omitempty"       jsonschema:"Language of the returned location names (e.g. 'de'). Defaults to 'en'."`
+}
+
 func generateKeywordIdeas(ctx context.Context, client *keywordplanner.Client, input generateKeywordIdeasInput) (*mcp.CallToolResult, any, error) {
 	if len(input.SeedKeywords) == 0 && input.URL == "" {
 		errResult := map[string]string{"error": "at least one of seed_keywords or url must be provided"}
 		b, _ := json.Marshal(errResult)
 		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(b)}}}, nil, nil
 	}
-	result, err := client.GenerateKeywordIdeas(ctx, input.SeedKeywords, input.URL, input.Language, input.GeoTargetConstants, input.KeywordPlanNetwork)
+	limit := input.Limit
+	if limit == 0 {
+		limit = defaultIdeaLimit
+	}
+	if limit < -1 || input.MinMonthlySearches < 0 {
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: `{"error":"limit must be -1 or non-negative; min_monthly_searches must be non-negative"}`}}}, nil, nil
+	}
+	result, err := client.GenerateKeywordIdeas(ctx, input.SeedKeywords, input.URL, input.Language, input.GeoTargetConstants, input.KeywordPlanNetwork,
+		keywordplanner.IdeaOptions{
+			Limit:                 limit,
+			MinMonthlySearches:    input.MinMonthlySearches,
+			IncludeMonthlyVolumes: input.IncludeMonthlyVolumes,
+		})
 	if err != nil {
 		errResult := map[string]string{"error": fmt.Sprintf("generating keyword ideas: %v", err)}
 		b, _ := json.Marshal(errResult)
@@ -257,6 +292,20 @@ func getKeywordForecast(ctx context.Context, client *keywordplanner.Client, inpu
 	})
 	if err != nil {
 		errResult := map[string]string{"error": fmt.Sprintf("getting keyword forecast: %v", err)}
+		b, _ := json.Marshal(errResult)
+		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(b)}}}, nil, nil
+	}
+	b, err := json.Marshal(result)
+	if err != nil {
+		return nil, nil, fmt.Errorf("marshalling result: %w", err)
+	}
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(b)}}}, nil, nil
+}
+
+func searchGeoTargets(ctx context.Context, client *keywordplanner.Client, input searchGeoTargetsInput) (*mcp.CallToolResult, any, error) {
+	result, err := client.SearchGeoTargets(ctx, input.Names, input.CountryCode, input.Locale)
+	if err != nil {
+		errResult := map[string]string{"error": fmt.Sprintf("searching geo targets: %v", err)}
 		b, _ := json.Marshal(errResult)
 		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(b)}}}, nil, nil
 	}

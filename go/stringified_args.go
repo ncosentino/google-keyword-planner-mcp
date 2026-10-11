@@ -15,6 +15,7 @@ var toolArrayFields = map[string][]string{
 	"generate_keyword_ideas": {"seed_keywords", "geo_target_constants"},
 	"get_historical_metrics": {"keywords", "geo_target_constants"},
 	"get_keyword_forecast":   {"keywords", "geo_target_constants"},
+	"search_geo_targets":     {"names"},
 }
 
 // coerceStringifiedArrayArgs returns a receiving middleware that repairs a

@@ -70,7 +70,7 @@ func TestGenerateKeywordIdeas_SendsLoginCustomerIDHeader(t *testing.T) {
 	client := keywordplanner.NewTestClient(
 		"dev-token", "3778350596", "1381404200", srv.URL, srv.Client(),
 	)
-	_, _ = client.GenerateKeywordIdeas(context.Background(), []string{"go"}, "", "", nil, "")
+	_, _ = client.GenerateKeywordIdeas(context.Background(), []string{"go"}, "", "", nil, "", keywordplanner.IdeaOptions{})
 
 	if capturedLoginID != "1381404200" {
 		t.Errorf("login-customer-id header = %q, want %q", capturedLoginID, "1381404200")
@@ -93,7 +93,7 @@ func TestGenerateKeywordIdeas_OmitsLoginCustomerIDHeaderWhenEmpty(t *testing.T) 
 	client := keywordplanner.NewTestClient(
 		"dev-token", "3778350596", "", srv.URL, srv.Client(),
 	)
-	_, _ = client.GenerateKeywordIdeas(context.Background(), []string{"go"}, "", "", nil, "")
+	_, _ = client.GenerateKeywordIdeas(context.Background(), []string{"go"}, "", "", nil, "", keywordplanner.IdeaOptions{})
 
 	if capturedLoginID != "" {
 		t.Errorf("login-customer-id header should be absent, got %q", capturedLoginID)
@@ -317,7 +317,7 @@ func TestGenerateKeywordIdeas_SendsGeoTargetAndNetwork(t *testing.T) {
 	client := keywordplanner.NewTestClient("dev-token", "123", "", srv.URL, srv.Client())
 	_, _ = client.GenerateKeywordIdeas(
 		context.Background(), []string{"go"}, "", "languageConstants/1000",
-		[]string{"geoTargetConstants/2036"}, "GOOGLE_SEARCH",
+		[]string{"geoTargetConstants/2036"}, "GOOGLE_SEARCH", keywordplanner.IdeaOptions{},
 	)
 
 	geo, ok := body["geoTargetConstants"].([]any)
@@ -343,7 +343,7 @@ func TestGenerateKeywordIdeas_OmitsGeoTargetWhenEmpty(t *testing.T) {
 	defer srv.Close()
 
 	client := keywordplanner.NewTestClient("dev-token", "123", "", srv.URL, srv.Client())
-	_, _ = client.GenerateKeywordIdeas(context.Background(), []string{"go"}, "", "", nil, "")
+	_, _ = client.GenerateKeywordIdeas(context.Background(), []string{"go"}, "", "", nil, "", keywordplanner.IdeaOptions{})
 
 	if _, present := body["geoTargetConstants"]; present {
 		t.Errorf("geoTargetConstants should be absent, got %v", body["geoTargetConstants"])
@@ -397,7 +397,7 @@ func TestPost_ReturnsFullErrorBody(t *testing.T) {
 	defer srv.Close()
 
 	client := keywordplanner.NewTestClient("dev-token", "123", "", srv.URL, srv.Client())
-	_, err := client.GenerateKeywordIdeas(context.Background(), []string{"test"}, "", "", nil, "")
+	_, err := client.GenerateKeywordIdeas(context.Background(), []string{"test"}, "", "", nil, "", keywordplanner.IdeaOptions{})
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
