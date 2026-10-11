@@ -19,7 +19,7 @@ AI assistants are powerful at SEO and content strategy -- but they need real key
 
 - **Keyword ideas** -- related keywords with average monthly searches, competition level, and CPC estimates from a seed keyword or URL
 - **Historical metrics** -- search volume trends, competition scores, and bid ranges for any list of keywords
-- **Forecasts** -- projected impressions, clicks, and cost for a set of keywords at a given max CPC bid
+- **Forecasts** -- available projected clicks, cost, and average CPC at a given max CPC bid
 
 With this MCP server configured, you can ask your AI: _"What keywords should I target for a blog post about dependency injection in C#? What's the search volume and competition look like?"_ and get a real data-backed answer.
 
@@ -31,8 +31,8 @@ With this MCP server configured, you can ask your AI: _"What keywords should I t
 |------|-------------|
 | `generate_keyword_ideas` | Generate related keywords from seed keywords and/or a URL with search volume and CPC data |
 | `get_historical_metrics` | Get historical search volume, competition, and CPC for a list of keywords |
-| `get_keyword_forecast` | Get projected impressions, clicks, and cost for keywords at a given max CPC bid |
-| `search_geo_targets` | Go only. Find regions and cities by name and return their geo target resource names |
+| `get_keyword_forecast` | Get available projected clicks, cost, and average CPC at a given max CPC bid |
+| `search_geo_targets` | Find regions and cities by name and return their geo target resource names |
 
 ---
 
@@ -230,8 +230,8 @@ Credentials are resolved in this priority order: **CLI flag > environment variab
 | Refresh token | `--refresh-token` | `GOOGLE_ADS_REFRESH_TOKEN` | Yes | From one-time OAuth2 flow |
 | Customer ID | `--customer-id` | `GOOGLE_ADS_CUSTOMER_ID` | Yes | Sub-account ID with billing (not the manager account) |
 | Login customer ID | `--login-customer-id` | `GOOGLE_ADS_LOGIN_CUSTOMER_ID` | Yes* | Manager/MCC account ID. Required when using a sub-account. |
-| Default language | -- | `GOOGLE_ADS_DEFAULT_LANGUAGE` | No | Go only. Language used when a tool call sets none, as an ISO code (`de`) or resource name (`languageConstants/1001`). |
-| Default geo targets | -- | `GOOGLE_ADS_DEFAULT_GEO_TARGETS` | No | Go only. Comma-separated geo targets used when a tool call sets none, as ISO country codes (`AT`) or resource names (`geoTargetConstants/2040`). |
+| Default language | -- | `GOOGLE_ADS_DEFAULT_LANGUAGE` | No | Language used when a tool call sets none, as an ISO code (`de`) or resource name (`languageConstants/1001`). |
+| Default geo targets | -- | `GOOGLE_ADS_DEFAULT_GEO_TARGETS` | No | Comma-separated geo targets used when a tool call sets none, as ISO country codes (`AT`) or resource names (`geoTargetConstants/2040`). |
 
 > \* Required when `GOOGLE_ADS_CUSTOMER_ID` is a managed sub-account (accessed through a manager/MCC account). Can be omitted if your OAuth credentials have direct access to the customer account.
 
@@ -305,12 +305,14 @@ At least one of `seedKeywords` or `url` must be provided.
 
 **Note:** Without active ad spend, search volumes are shown as ranges. Any minimal ad spend unlocks precise monthly volumes.
 
-**Go server only:**
-- `seed_keywords` and the other parameters use snake_case names.
-- `language` and `geo_target_constants` accept ISO codes (`"de"`, `["AT", "DE"]`) as well as resource names. Regions and cities have no code; look them up with `search_geo_targets`.
+**Both servers:** Go uses snake_case names and arrays; C# uses camelCase names
+and comma-separated strings. For example, Go's `seed_keywords: ["go", "csharp"]`
+corresponds to C#'s `seedKeywords: "go, csharp"`.
+
+- `language` and geo targets accept ISO codes, English names, bare IDs, and resource names. Regions and cities can be found with `search_geo_targets`.
 - `limit` (optional, default `50`) -- maximum number of ideas, highest search volume first across all API pages. Use `-1` for all ideas. `totalFound` counts ideas before filtering and truncation.
-- `min_monthly_searches` (optional) -- drop ideas below this average monthly search volume.
-- `include_monthly_volumes` (optional, default `false`) -- add the 12-month `monthlySearchVolumes` to each idea.
+- `min_monthly_searches` / `minMonthlySearches` (optional) -- drop ideas below this average monthly search volume.
+- `include_monthly_volumes` / `includeMonthlyVolumes` (optional, default `false`) -- add available `monthlySearchVolumes` to each idea.
 - Each idea also carries `competitionIndex`, and the response echoes the `language` and `geoTargetConstants` it used.
 
 ---
@@ -328,39 +330,45 @@ Gets historical search volume and competition data for a specific list of keywor
 
 ### `get_keyword_forecast`
 
-Projects impressions, clicks, and cost for keywords at a specified maximum CPC bid.
+Projects available clicks, cost, and average CPC at a specified maximum CPC bid.
 
 **Parameters:**
 - `keywords` (required) -- comma-separated list of keywords
 - `maxCpcMicros` (optional, default `1000000`) -- maximum CPC bid in micros (1,000,000 = $1.00)
 - `forecastDays` (optional, default `30`) -- number of days to forecast
 
-**Go v25:** Returns `total` for all keywords in one ad group, `keywords` for
+**Both implementations, v25:** Return `total` for all keywords in one ad group, `keywords` for
 optional isolated scenarios, the inclusive `startDate`/`endDate`, `matchType`,
 and effective targeting. Available metrics are `clicks`, `costMicros`, and
 `averageCpcMicros`; unavailable values are omitted. Impressions, CTR, and
 manual-CPC conversion predictions are not available.
 
-Go additionally accepts `language`, `geo_target_constants`, `match_type`,
-`currency_code`, and `include_keyword_breakdown` (default `false`). The
+Both accept `language`, geography, match type, currency, and optional breakdown.
+Go names are `geo_target_constants`, `match_type`, `currency_code`, and
+`include_keyword_breakdown`; C# names are `geoTargetConstants`, `matchType`,
+`currencyCode`, and `includeKeywordBreakdown`. Breakdown defaults to `false`. The
 breakdown uses an extra request per keyword; these independent scenarios must
 not be summed to obtain the combined total. Planning calls share a per-client
-one-request-per-second gate for the configured customer. Currency values are
+one-request-per-second gate for the configured customer. This gate is local to
+one client/process, not shared between independently running servers; multiple
+instances using the same customer must coordinate their aggregate quota.
+Currency values are
 in micros of the requested currency, or the account currency when omitted.
 
-For all Go tools, omitted targeting uses the configured defaults. Pass
+For all tools, omitted targeting uses the configured defaults. In Go, pass
 `language: "all"` and `geo_target_constants: []` to override defaults with
-unrestricted targeting. Blank language or geo entries are errors.
+unrestricted targeting. In C#, use `language: "all"` and `geoTargetConstants: ""`.
+Whitespace-only language or blank geo entries are errors.
 
 ---
 
-### `search_geo_targets` (Go only)
+### `search_geo_targets`
 
-Finds locations by name so they can be passed as `geo_target_constants`.
+Finds locations by name so they can be passed as geo targets.
 
 **Parameters:**
-- `names` (required) -- location names (e.g. `["Wien", "Steiermark"]`)
-- `country_code` (optional) -- ISO country code restricting the search (e.g. `"AT"`)
+- `names` (required) -- location names (Go: `["Wien", "Steiermark"]`; C#: `"Wien, Steiermark"`)
+- `country_code` / `countryCode` (optional) -- ISO country code restricting the search (e.g. `"AT"`)
 - `locale` (optional, default `"en"`) -- language of the returned names
 
 **Returns:** Matching locations with `resourceName`, `name`, `canonicalName`, `countryCode`, `targetType` and `reach`.
@@ -370,8 +378,9 @@ Finds locations by name so they can be passed as `geo_target_constants`.
 ## Go vs C# -- Which Binary to Use?
 
 Both implementations use repaired Google Ads v25 historical and forecast
-contracts and configurable targeting. Feature parity follow-ups are tracked
-in [#32](https://github.com/ncosentino/google-keyword-planner-mcp/issues/32).
+contracts, configurable targeting, enriched ideas, location discovery, and
+bounded optional forecast concurrency. The integration and parity evidence
+is tracked in [#32](https://github.com/ncosentino/google-keyword-planner-mcp/issues/32).
 Go uses snake_case argument names and keyword arrays; C# retains camelCase names
 and comma-separated keyword strings. Existing input formats are intentionally
 preserved, so callers must use the argument names and formats for their binary.

@@ -1,0 +1,10 @@
+{
+  "currencyCode": "EUR",
+  "forecastPeriod": { "startDate": "$start", "endDate": "$end" },
+  "campaign": {
+    "languageConstants": ["languageConstants/1001"],
+    "geoTargetConstants": ["geoTargetConstants/2040"],
+    "biddingStrategy": { "manualCpcBiddingStrategy": { "maxCpcBidMicros": "2000000" } },
+    "adGroups": [{ "keywords": [{ "text": "go", "matchType": "PHRASE" }] }]
+  }
+}

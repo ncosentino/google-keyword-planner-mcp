@@ -67,8 +67,11 @@ func TestGetKeywordForecast_SingleKeywordNeedsOneRequest(t *testing.T) {
 func TestGetKeywordForecast_RunsRequestsConcurrentlyAndKeepsOrder(t *testing.T) {
 	t.Parallel()
 
-	keywords := []string{"a", "b", "c", "d"}
-	clicks := map[string]float64{"a": 1, "b": 2, "c": 3, "d": 4}
+	keywords := []string{"a", "b", "c", "d", "e", "f", "g", "h"}
+	clicks := make(map[string]float64, len(keywords))
+	for i, keyword := range keywords {
+		clicks[keyword] = float64(i + 1)
+	}
 
 	var inFlight, maxInFlight atomic.Int32
 	entered := make(chan struct{}, len(keywords))
@@ -102,7 +105,7 @@ func TestGetKeywordForecast_RunsRequestsConcurrentlyAndKeepsOrder(t *testing.T) 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	go func() {
-		for range keywords {
+		for range 5 {
 			select {
 			case <-entered:
 			case <-ctx.Done():
@@ -116,8 +119,8 @@ func TestGetKeywordForecast_RunsRequestsConcurrentlyAndKeepsOrder(t *testing.T) 
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if got := maxInFlight.Load(); got < 2 || got > 5 {
-		t.Errorf("max concurrent requests = %d, want between 2 and 5", got)
+	if got := maxInFlight.Load(); got != 5 {
+		t.Errorf("max concurrent requests = %d, want exactly 5 with eight queued keywords", got)
 	}
 	for i, kw := range keywords {
 		if result.Keywords[i].Text != kw || result.Keywords[i].Clicks == nil || *result.Keywords[i].Clicks != clicks[kw] {

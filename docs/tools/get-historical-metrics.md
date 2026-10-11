@@ -11,6 +11,13 @@ Get historical search volume and competition data for a specific list of keyword
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `keywords` | string | Yes | Comma-separated list of exact keywords (e.g. `"dependency injection, SOLID principles"`) |
+| `language` | string | No | ISO code, name, ID, or resource name; `all` removes a default |
+| `geoTargetConstants` | string | No | Comma-separated geo values; empty string requests worldwide |
+| `keywordPlanNetwork` | string | No | `GOOGLE_SEARCH` or `GOOGLE_SEARCH_AND_PARTNERS` |
+
+The table uses C# names and strings. Go uses keyword arrays,
+`geo_target_constants` arrays, and `keyword_plan_network`. Omitted targeting
+uses configured defaults in both implementations.
 
 ## Response
 
@@ -18,22 +25,22 @@ Returns a list of objects, one per keyword:
 
 ```json
 {
-  "keyword": "dependency injection",
+  "text": "dependency injection",
   "avgMonthlySearches": 22200,
   "competition": "LOW",
   "competitionIndex": 18,
   "lowTopOfPageBidMicros": 500000,
   "highTopOfPageBidMicros": 2100000,
   "monthlySearchVolumes": [
-    { "year": 2024, "month": "JANUARY", "monthlySearches": 21000 },
-    { "year": 2024, "month": "FEBRUARY", "monthlySearches": 23000 }
+    { "year": 2024, "month": 1, "monthlySearches": 21000 },
+    { "year": 2024, "month": 2, "monthlySearches": 23000 }
   ]
 }
 ```
 
 | Field | Description |
 |-------|-------------|
-| `keyword` | The keyword text |
+| `text` | The keyword text |
 | `avgMonthlySearches` | 12-month average monthly search volume |
 | `competition` | `LOW`, `MEDIUM`, or `HIGH` |
 | `competitionIndex` | Competition score 0-100 |
@@ -50,5 +57,7 @@ Returns a list of objects, one per keyword:
 
 ## Notes
 
+- The response wraps entries in `keywords` and includes `count`. Monthly values
+  are numeric month indexes, even though the Google response uses enum names.
 - Up to a few thousand keywords can be passed in a single call.
 - `monthlySearchVolumes` is particularly useful for spotting seasonal trends.

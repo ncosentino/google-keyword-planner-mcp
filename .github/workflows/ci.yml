@@ -37,7 +37,7 @@ jobs:
           install-mode: goinstall
 
       - name: go test
-        run: go test ./...
+        run: go test -race ./...
 
   csharp:
     name: C# build and test
@@ -62,6 +62,9 @@ jobs:
 
       - name: Test
         run: dotnet test KeywordPlannerMcp.slnx --no-build -c Release --logger "console;verbosity=minimal"
+
+      - name: Publish Native AOT
+        run: dotnet publish src/KeywordPlannerMcp/KeywordPlannerMcp.csproj -c Release -r linux-x64 -o /tmp/kwp-aot
 
   docs:
     name: Build and deploy documentation
