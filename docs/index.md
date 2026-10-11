@@ -17,7 +17,8 @@ AI assistants are powerful at SEO and content strategy -- but they need real key
 
 - **Keyword ideas** -- related keywords with average monthly searches, competition level, and CPC estimates from a seed keyword or URL
 - **Historical metrics** -- search volume trends, competition scores, and bid ranges for any list of keywords
-- **Forecasts** -- projected impressions, clicks, and cost for a set of keywords at a given max CPC bid
+- **Forecasts** -- available projected clicks, cost, and average CPC at a given max CPC bid
+- **Location discovery** -- country, region, and city geo target resource names
 
 With this MCP server configured, you can ask your AI: _"What keywords should I target for a blog post about dependency injection in C#? What's the search volume and competition look like?"_ and get a real data-backed answer.
 
@@ -25,13 +26,14 @@ With this MCP server configured, you can ask your AI: _"What keywords should I t
 
 ## Quick Overview
 
-Three MCP tools are exposed:
+Four MCP tools are exposed in both implementations:
 
 | Tool | What it does |
 |------|-------------|
 | [`generate_keyword_ideas`](tools/generate-keyword-ideas/) | Related keywords with search volume and CPC from seed keywords or a URL |
 | [`get_historical_metrics`](tools/get-historical-metrics/) | Historical search volume, competition, and CPC for a list of keywords |
-| [`get_keyword_forecast`](tools/get-keyword-forecast/) | Projected impressions, clicks, and cost at a given max CPC bid |
+| [`get_keyword_forecast`](tools/get-keyword-forecast/) | Available projected clicks, cost, and average CPC at a given max CPC bid |
+| [`search_geo_targets`](tools/search-geo-targets/) | Discover geo target resource names by location name |
 
 ---
 

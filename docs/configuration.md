@@ -1,5 +1,5 @@
 ---
-description: Full reference for all Google Keyword Planner MCP credentials -- CLI flags, environment variables, .env file, customer ID formats, and developer token access levels.
+description: Credential flags, environment variables, .env files, customer IDs, and Google Cloud project access levels.
 ---
 
 # Configuration

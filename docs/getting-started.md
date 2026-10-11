@@ -1,5 +1,5 @@
 ---
-description: Step-by-step guide to setting up the Google Keyword Planner MCP server -- Google Ads account, developer token, OAuth2 refresh token, and binary download.
+description: Set up Google Ads access, Google Cloud project approval, OAuth2 credentials, and native MCP binaries.
 ---
 
 # Getting Started
