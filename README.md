@@ -42,11 +42,11 @@ With this MCP server configured, you can ask your AI: _"What keywords should I t
 
 You need:
 
-1. A **Google Ads manager account (MCC)** -- developer tokens are only issued to manager accounts, not regular accounts. Create one free at [ads.google.com/home/tools/manager-accounts](https://ads.google.com/home/tools/manager-accounts/) if you don't have one.
+1. **Access to the target Google Ads account** -- a manager account is needed only when accessing the target through a manager hierarchy.
 
-2. A **Google Ads developer token with Basic or Standard access** -- in your manager account, go to `https://ads.google.com/aw/apicenter` and copy your developer token.
+2. A **Google Cloud project with production API access** -- apply through the [Google Ads API overview](https://console.cloud.google.com/google/ads-apis/overview).
 
-   > **⚠️ New tokens start in test mode.** A brand-new developer token can only call the API against [Google Ads test accounts](https://developers.google.com/google-ads/api/docs/best-practices/test-accounts). Calls to any real account return `DEVELOPER_TOKEN_NOT_APPROVED` until you apply for Basic access. To apply: in the API Center (`https://ads.google.com/aw/apicenter`), click **Apply for Basic Access** and fill in the form. Google reviews requests within a few days. You do not need Standard access -- Basic access is sufficient for the Keyword Planner API.
+   > Developer tokens were sunset on September 9, 2026. Project Test access cannot query production accounts; apply for Explorer or a higher access level. Legacy token flags remain optional for compatibility. See Google's [migration guide](https://developers.google.com/google-ads/api/docs/api-policy/developer-token).
 
 3. A **Google Ads account with billing configured** -- the Keyword Planner API requires an account with an active payment method. You do not need to run any ads or spend money; you just need a payment method on file. This can be your manager account itself (if it has billing) or a separate sub-account.
 
@@ -211,7 +211,7 @@ The Google Ads Keyword Planner API **requires an account with billing configured
 
 | Error | Meaning | Fix |
 |-------|---------|-----|
-| `DEVELOPER_TOKEN_NOT_APPROVED` | Your developer token is in test mode and cannot access real accounts | Apply for Basic access at `https://ads.google.com/aw/apicenter` and wait for Google approval (a few days) |
+| `CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION` | The OAuth project has Test access only | Apply for production access in the Google Ads API overview in Cloud Console |
 | `USER_PERMISSION_DENIED` with mention of `login-customer-id` | The account is a managed sub-account but `GOOGLE_ADS_LOGIN_CUSTOMER_ID` is missing or wrong | Set `GOOGLE_ADS_LOGIN_CUSTOMER_ID` to your manager account ID |
 | `USER_PERMISSION_DENIED` without mention of `login-customer-id` | The OAuth user doesn't have access to the customer account | Complete the OAuth flow as the Google account that owns or has access to the ads account |
 | HTTP 400 `INVALID_ARGUMENT` | Often a malformed customer ID or missing required field | Check that `GOOGLE_ADS_CUSTOMER_ID` contains only digits (dashes are stripped automatically) |
@@ -224,7 +224,7 @@ Credentials are resolved in this priority order: **CLI flag > environment variab
 
 | Credential | CLI flag | Environment variable | Required | Description |
 |------------|----------|---------------------|----------|-------------|
-| Developer token | `--developer-token` | `GOOGLE_ADS_DEVELOPER_TOKEN` | Yes | From Google Ads API Center (manager account) |
+| Legacy developer token | `--developer-token` | `GOOGLE_ADS_DEVELOPER_TOKEN` | No | Optional compatibility setting; ignored by Google since September 9, 2026 |
 | OAuth2 client ID | `--client-id` | `GOOGLE_ADS_CLIENT_ID` | Yes | From GCP OAuth2 credentials |
 | OAuth2 client secret | `--client-secret` | `GOOGLE_ADS_CLIENT_SECRET` | Yes | From GCP OAuth2 credentials |
 | Refresh token | `--refresh-token` | `GOOGLE_ADS_REFRESH_TOKEN` | Yes | From one-time OAuth2 flow |

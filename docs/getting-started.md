@@ -4,20 +4,21 @@ description: Step-by-step guide to setting up the Google Keyword Planner MCP ser
 
 # Getting Started
 
-The Google Ads Keyword Planner API has more prerequisites than most APIs -- you need a Google Ads manager account, a developer token, and an OAuth2 refresh token. This page walks through every step.
+You need an approved Google Cloud project, access to a Google Ads account,
+and OAuth2 credentials. Developer tokens are no longer required.
 
 ---
 
 ## Prerequisites
 
-You need all seven of these before the MCP server will work:
+Configure these prerequisites before using the MCP server:
 
-1. **Google Ads manager account (MCC)** -- developer tokens are only issued to manager accounts, not regular accounts. Create one free at [ads.google.com/home/tools/manager-accounts](https://ads.google.com/home/tools/manager-accounts/).
+1. **Google Ads account access** -- a manager account is needed only if you access the target account through a manager hierarchy.
 
-2. **Developer token with Basic or Standard access** -- in your manager account, go to `https://ads.google.com/aw/apicenter` and copy your developer token.
+2. **Google Cloud project approved for production API access** -- use the [Google Ads API overview](https://console.cloud.google.com/google/ads-apis/overview). Developer tokens were sunset on September 9, 2026.
 
-    !!! warning "New tokens start in test mode"
-        A brand-new developer token can only call the API against [Google Ads test accounts](https://developers.google.com/google-ads/api/docs/best-practices/test-accounts). Calls to real accounts return `DEVELOPER_TOKEN_NOT_APPROVED` until you apply for Basic access. In the API Center, click **Apply for Basic Access** and fill in the form. Google reviews requests within a few days. Basic access is sufficient -- Standard access is not required.
+    !!! warning "Test access cannot query production accounts"
+        A project with Test access can only query test accounts. Apply for Explorer or a higher access level in Google Cloud Console before querying a real account. See the [developer-token migration guide](https://developers.google.com/google-ads/api/docs/api-policy/developer-token).
 
 3. **Google Ads account with billing configured** -- the Keyword Planner API requires an account with an active payment method. You do not need to run ads or spend money; you just need a payment method on file. This can be your manager account itself or a separate sub-account.
 
