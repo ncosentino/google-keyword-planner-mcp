@@ -95,7 +95,7 @@ public sealed class KeywordPlannerClientTests
     [Fact]
     public async Task GetHistoricalMetrics_SendsLoginCustomerIdHeader_WhenSet()
     {
-        var historicalBody = JsonSerializer.Serialize(new { metrics = Array.Empty<object>() });
+        var historicalBody = JsonSerializer.Serialize(new { results = Array.Empty<object>() });
         var (client, handler) = CreateClient(loginCustomerId: "1381404200", apiBody: historicalBody);
 
         await client.GetHistoricalMetricsAsync(["blazor"]);
@@ -108,7 +108,7 @@ public sealed class KeywordPlannerClientTests
     [Fact]
     public async Task GetKeywordForecast_SendsLoginCustomerIdHeader_WhenSet()
     {
-        var forecastBody = JsonSerializer.Serialize(new { adGroupForecastMetrics = Array.Empty<object>() });
+        const string forecastBody = """{"campaignForecastMetrics":{"clicks":50,"costMicros":"500000","averageCpcMicros":"10000"}}""";
         var (client, handler) = CreateClient(loginCustomerId: "1381404200", apiBody: forecastBody);
 
         await client.GetKeywordForecastAsync(["blazor"], maxCpcMicros: 1_000_000, forecastDays: 30);

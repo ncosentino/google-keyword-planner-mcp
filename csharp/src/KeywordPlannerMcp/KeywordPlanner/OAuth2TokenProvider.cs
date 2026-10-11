@@ -9,20 +9,31 @@ internal sealed class OAuth2TokenProvider(
     string clientId,
     string clientSecret,
     string refreshToken,
-    HttpClient httpClient)
+    HttpClient httpClient) : IDisposable
 {
     private const string TokenEndpoint = "https://oauth2.googleapis.com/token";
     private const int ExpiryBufferSeconds = 60;
 
     private string? _cachedToken;
     private DateTimeOffset _tokenExpiry = DateTimeOffset.MinValue;
+    private readonly SemaphoreSlim _refreshGate = new(1, 1);
 
     internal async Task<string> GetAccessTokenAsync(CancellationToken cancellationToken = default)
+    {
+        await _refreshGate.WaitAsync(cancellationToken);
+        try
+        {
+            return await GetAccessTokenCoreAsync(cancellationToken);
+        }
+        finally { _refreshGate.Release(); }
+    }
+
+    private async Task<string> GetAccessTokenCoreAsync(CancellationToken cancellationToken)
     {
         if (_cachedToken is not null && DateTimeOffset.UtcNow < _tokenExpiry)
             return _cachedToken;
 
-        var requestBody = new FormUrlEncodedContent(
+        using var requestBody = new FormUrlEncodedContent(
         [
             new KeyValuePair<string, string>("client_id", clientId),
             new KeyValuePair<string, string>("client_secret", clientSecret),
@@ -30,7 +41,7 @@ internal sealed class OAuth2TokenProvider(
             new KeyValuePair<string, string>("grant_type", "refresh_token"),
         ]);
 
-        var response = await httpClient.PostAsync(TokenEndpoint, requestBody, cancellationToken);
+        using var response = await httpClient.PostAsync(TokenEndpoint, requestBody, cancellationToken);
 
         if (!response.IsSuccessStatusCode)
         {
@@ -39,7 +50,7 @@ internal sealed class OAuth2TokenProvider(
                 $"OAuth2 token exchange failed ({response.StatusCode}): {body}");
         }
 
-        var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         var tokenResponse = await JsonSerializer.DeserializeAsync(
             stream, KwpJsonContext.Default.TokenResponse, cancellationToken);
 
@@ -60,4 +71,6 @@ internal sealed class OAuth2TokenProvider(
 
     internal static StringContent JsonContent(string json) =>
         new(json, Encoding.UTF8, "application/json");
+
+    public void Dispose() => _refreshGate.Dispose();
 }

@@ -186,7 +186,7 @@ public sealed class HostingHttpTests
     [Fact]
     public async Task BuildHttpHost_CallHistoricalMetricsTool_ViaRealSession_ReturnsSuccessResult()
     {
-        var handler = new FakeGoogleAdsHandler("""{"metrics":[]}""");
+        var handler = new FakeGoogleAdsHandler("""{"results":[]}""");
         await using var app = Hosting.BuildHttpHost(
             [], DevToken, ClientId, ClientSecret, RefreshToken, CustomerId, loginCustomerId: null, port: 0, handler);
         await app.StartAsync();
@@ -198,10 +198,20 @@ public sealed class HostingHttpTests
             }));
 
             var result = await client.CallToolAsync(
-                "get_historical_metrics", new Dictionary<string, object?> { ["keywords"] = "dependency injection" });
+                "get_historical_metrics", new Dictionary<string, object?>
+                {
+                    ["keywords"] = "dependency injection",
+                    ["language"] = "all",
+                    ["geoTargetConstants"] = "",
+                    ["keywordPlanNetwork"] = "GOOGLE_SEARCH"
+                });
 
             // IsError is nullable: null (unset) on success, true on error.
             Assert.NotEqual(true, result.IsError);
+            var text = Assert.IsType<ModelContextProtocol.Protocol.TextContentBlock>(Assert.Single(result.Content));
+            using var json = JsonDocument.Parse(text.Text);
+            Assert.False(json.RootElement.TryGetProperty("error", out _));
+            Assert.Equal(0, json.RootElement.GetProperty("count").GetInt32());
         }
         finally
         {
@@ -216,7 +226,7 @@ public sealed class HostingHttpTests
     [Fact]
     public async Task BuildHttpHost_CallKeywordForecastTool_ViaRealSession_ReturnsSuccessResult()
     {
-        var handler = new FakeGoogleAdsHandler("""{"adGroupForecastMetrics":[]}""");
+        var handler = new FakeGoogleAdsHandler("""{"campaignForecastMetrics":{"clicks":50,"costMicros":"500000","averageCpcMicros":"10000"}}""");
         await using var app = Hosting.BuildHttpHost(
             [], DevToken, ClientId, ClientSecret, RefreshToken, CustomerId, loginCustomerId: null, port: 0, handler);
         await app.StartAsync();
@@ -228,10 +238,29 @@ public sealed class HostingHttpTests
             }));
 
             var result = await client.CallToolAsync(
-                "get_keyword_forecast", new Dictionary<string, object?> { ["keywords"] = "dependency injection" });
+                "get_keyword_forecast", new Dictionary<string, object?>
+                {
+                    ["keywords"] = "dependency injection",
+                    ["maxCpcMicros"] = 2_000_000L,
+                    ["forecastDays"] = 1,
+                    ["language"] = "all",
+                    ["geoTargetConstants"] = "",
+                    ["matchType"] = "EXACT",
+                    ["currencyCode"] = "USD",
+                    ["includeKeywordBreakdown"] = true
+                });
 
             // IsError is nullable: null (unset) on success, true on error.
             Assert.NotEqual(true, result.IsError);
+            var text = Assert.IsType<ModelContextProtocol.Protocol.TextContentBlock>(Assert.Single(result.Content));
+            using var json = JsonDocument.Parse(text.Text);
+            Assert.False(json.RootElement.TryGetProperty("error", out _));
+            Assert.Equal(50d, json.RootElement.GetProperty("total").GetProperty("clicks").GetDouble());
+            Assert.Equal(1, json.RootElement.GetProperty("keywords").GetArrayLength());
+            Assert.Equal(1, json.RootElement.GetProperty("forecastDays").GetInt32());
+            Assert.Equal(2_000_000L, json.RootElement.GetProperty("maxCpcMicros").GetInt64());
+            Assert.Equal("EXACT", json.RootElement.GetProperty("matchType").GetString());
+            Assert.Equal("USD", json.RootElement.GetProperty("currencyCode").GetString());
         }
         finally
         {

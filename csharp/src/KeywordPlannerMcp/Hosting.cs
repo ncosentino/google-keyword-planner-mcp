@@ -133,8 +133,12 @@ internal static class Hosting
         string refreshToken,
         string customerId,
         string? loginCustomerId,
-        HttpMessageHandler? httpMessageHandler = null)
+        HttpMessageHandler? httpMessageHandler = null,
+        Func<string, string?>? getEnvironmentVariable = null)
     {
+        getEnvironmentVariable ??= name => Config.CredentialResolver.ResolveCredential(null, name);
+        var defaultLanguage = getEnvironmentVariable("GOOGLE_ADS_DEFAULT_LANGUAGE");
+        var defaultGeography = KeywordPlannerTool.ParseGeography(getEnvironmentVariable("GOOGLE_ADS_DEFAULT_GEO_TARGETS"));
         builder.Logging.AddConsole(options =>
             options.LogToStandardErrorThreshold = LogLevel.Trace);
         builder.Logging.SetMinimumLevel(LogLevel.Warning);
@@ -153,7 +157,7 @@ internal static class Hosting
             apiClient.ConfigurePrimaryHttpMessageHandler(() => httpMessageHandler);
         }
 
-        builder.Services.AddTransient<OAuth2TokenProvider>(services =>
+        builder.Services.AddSingleton<OAuth2TokenProvider>(services =>
         {
             var factory = services.GetRequiredService<IHttpClientFactory>();
             return new OAuth2TokenProvider(
@@ -162,7 +166,8 @@ internal static class Hosting
                 refreshToken,
                 factory.CreateClient(nameof(OAuth2TokenProvider)));
         });
-        builder.Services.AddTransient<KeywordPlannerClient>(services =>
+        builder.Services.AddSingleton<IPlanningPacer>(_ => new PlanningPacer(TimeProvider.System));
+        builder.Services.AddSingleton<KeywordPlannerClient>(services =>
         {
             var factory = services.GetRequiredService<IHttpClientFactory>();
             var tokenProvider = services.GetRequiredService<OAuth2TokenProvider>();
@@ -171,7 +176,10 @@ internal static class Hosting
                 customerId,
                 loginCustomerId,
                 tokenProvider,
-                factory.CreateClient(nameof(KeywordPlannerClient)));
+                factory.CreateClient(nameof(KeywordPlannerClient)),
+                defaultLanguage,
+                defaultGeography,
+                planningPacer: services.GetRequiredService<IPlanningPacer>());
         });
     }
 

@@ -14,8 +14,10 @@ internal sealed class KeywordPlannerTool(KeywordPlannerClient client)
     internal async Task<string> GenerateKeywordIdeasAsync(
         [Description("Comma-separated seed keywords (e.g. 'C# tutorial, dotnet performance').")] string? seedKeywords = null,
         [Description("A URL to generate ideas from (e.g. 'https://devleader.ca').")] string? url = null,
-        [Description("Language resource name (e.g. 'languageConstants/1000' for English). Omit to use all languages.")] string? language = null,
-        CancellationToken cancellationToken = default)
+        [Description("Language resource name (e.g. 'languageConstants/1000'). Omit to use the configured default; 'all' removes the restriction.")] string? language = null,
+        CancellationToken cancellationToken = default,
+        [Description("Comma-separated geo target resource names. Omit to use defaults; an empty string means worldwide.")] string? geoTargetConstants = null,
+        [Description("GOOGLE_SEARCH or GOOGLE_SEARCH_AND_PARTNERS. Omit to use the API default.")] string? keywordPlanNetwork = null)
     {
         var seeds = string.IsNullOrWhiteSpace(seedKeywords)
             ? null
@@ -29,11 +31,12 @@ internal sealed class KeywordPlannerTool(KeywordPlannerClient client)
 
         try
         {
-            var result = await client.GenerateKeywordIdeasAsync(seeds, url, language, cancellationToken)
+            var result = await client.GenerateKeywordIdeasAsync(seeds, url, language, cancellationToken,
+                ParseGeography(geoTargetConstants), keywordPlanNetwork)
                 .ConfigureAwait(false);
             return JsonSerializer.Serialize(result, KwpJsonContext.Default.KeywordIdeasResponse);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             var err = new ErrorResult($"Error generating keyword ideas: {ex.Message}");
             return JsonSerializer.Serialize(err, KwpJsonContext.Default.ErrorResult);
@@ -44,17 +47,21 @@ internal sealed class KeywordPlannerTool(KeywordPlannerClient client)
     [Description("Get historical search volume and competition metrics for a list of keywords using Google Ads Keyword Planner.")]
     internal async Task<string> GetHistoricalMetricsAsync(
         [Description("Comma-separated list of keywords to look up (e.g. 'dependency injection, SOLID principles').")] string keywords,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        [Description("Language resource name. Omit to use defaults; 'all' means unrestricted.")] string? language = null,
+        [Description("Comma-separated geo target resource names. Omit to use defaults; an empty string means worldwide.")] string? geoTargetConstants = null,
+        [Description("GOOGLE_SEARCH or GOOGLE_SEARCH_AND_PARTNERS. Omit to use the API default.")] string? keywordPlanNetwork = null)
     {
         var keywordList = keywords.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
         try
         {
-            var result = await client.GetHistoricalMetricsAsync(keywordList, cancellationToken)
+            var result = await client.GetHistoricalMetricsAsync(keywordList, cancellationToken,
+                language, ParseGeography(geoTargetConstants), keywordPlanNetwork)
                 .ConfigureAwait(false);
             return JsonSerializer.Serialize(result, KwpJsonContext.Default.HistoricalMetricsResponse);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             var err = new ErrorResult($"Error getting historical metrics: {ex.Message}");
             return JsonSerializer.Serialize(err, KwpJsonContext.Default.ErrorResult);
@@ -62,25 +69,36 @@ internal sealed class KeywordPlannerTool(KeywordPlannerClient client)
     }
 
     [McpServerTool(Name = "get_keyword_forecast")]
-    [Description("Get projected impressions, clicks, and cost for a set of keywords at a given max CPC bid using Google Ads Keyword Planner. max_cpc_micros is in micros (1,000,000 = $1.00). forecast_days defaults to 30.")]
+    [Description("Get projected campaign clicks, costMicros, and averageCpcMicros. Optional per-keyword results are independent scenarios, not additive. maxCpcMicros is in micros (1,000,000 = one currency unit). forecastDays defaults to 30.")]
     internal async Task<string> GetKeywordForecastAsync(
         [Description("Comma-separated list of keywords to forecast.")] string keywords,
-        [Description("Maximum CPC bid in micros (1,000,000 = $1.00). Defaults to 1,000,000.")] long maxCpcMicros = 1_000_000,
+        [Description("Maximum CPC bid in micros (1,000,000 = one requested or account currency unit). Defaults to 1,000,000.")] long maxCpcMicros = 1_000_000,
         [Description("Number of days to forecast. Defaults to 30.")] int forecastDays = 30,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        [Description("Language resource name. Omit to use defaults; 'all' means unrestricted.")] string? language = null,
+        [Description("Comma-separated geo target resource names. Omit to use defaults; an empty string means worldwide.")] string? geoTargetConstants = null,
+        [Description("BROAD, PHRASE, or EXACT. Defaults to BROAD.")] string? matchType = null,
+        [Description("Optional currency code, echoed when supplied.")] string? currencyCode = null,
+        [Description("Request independent per-keyword scenarios in addition to the combined total. Requires extra API calls; scenarios are not additive.")] bool includeKeywordBreakdown = false)
     {
         var keywordList = keywords.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
         try
         {
-            var result = await client.GetKeywordForecastAsync(keywordList, maxCpcMicros, forecastDays, cancellationToken)
+            var result = await client.GetKeywordForecastAsync(keywordList, maxCpcMicros, forecastDays,
+                cancellationToken, language, ParseGeography(geoTargetConstants), matchType,
+                currencyCode, includeKeywordBreakdown)
                 .ConfigureAwait(false);
             return JsonSerializer.Serialize(result, KwpJsonContext.Default.ForecastResponse);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             var err = new ErrorResult($"Error getting keyword forecast: {ex.Message}");
             return JsonSerializer.Serialize(err, KwpJsonContext.Default.ErrorResult);
         }
+
     }
+
+    internal static IReadOnlyList<string>? ParseGeography(string? value) =>
+        value is null ? null : value.Length == 0 ? [] : value.Split(',', StringSplitOptions.TrimEntries);
 }
