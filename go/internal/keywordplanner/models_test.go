@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/ncosentino/google-keyword-planner-mcp/go/internal/keywordplanner"
@@ -70,7 +71,7 @@ func TestGenerateKeywordIdeas_SendsLoginCustomerIDHeader(t *testing.T) {
 	client := keywordplanner.NewTestClient(
 		"dev-token", "3778350596", "1381404200", srv.URL, srv.Client(),
 	)
-	_, _ = client.GenerateKeywordIdeas(context.Background(), []string{"go"}, "", "", nil, "")
+	_, _ = client.GenerateKeywordIdeas(context.Background(), []string{"go"}, "", "", nil, "", keywordplanner.IdeaOptions{})
 
 	if capturedLoginID != "1381404200" {
 		t.Errorf("login-customer-id header = %q, want %q", capturedLoginID, "1381404200")
@@ -93,7 +94,7 @@ func TestGenerateKeywordIdeas_OmitsLoginCustomerIDHeaderWhenEmpty(t *testing.T) 
 	client := keywordplanner.NewTestClient(
 		"dev-token", "3778350596", "", srv.URL, srv.Client(),
 	)
-	_, _ = client.GenerateKeywordIdeas(context.Background(), []string{"go"}, "", "", nil, "")
+	_, _ = client.GenerateKeywordIdeas(context.Background(), []string{"go"}, "", "", nil, "", keywordplanner.IdeaOptions{})
 
 	if capturedLoginID != "" {
 		t.Errorf("login-customer-id header should be absent, got %q", capturedLoginID)
@@ -204,9 +205,9 @@ func TestGetKeywordForecast_SendsV25RequestShape(t *testing.T) {
 func TestGetKeywordForecast_ForecastsEachKeywordAndTheCombinedAdGroup(t *testing.T) {
 	t.Parallel()
 
-	var requests int
+	var requests atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requests++
+		requests.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"campaignForecastMetrics": map[string]any{
@@ -226,8 +227,8 @@ func TestGetKeywordForecast_ForecastsEachKeywordAndTheCombinedAdGroup(t *testing
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if requests != 3 {
-		t.Errorf("made %d requests, want 3 (one per keyword plus the combined total)", requests)
+	if got := requests.Load(); got != 3 {
+		t.Errorf("made %d requests, want 3 (one per keyword plus the combined total)", got)
 	}
 	if len(result.Keywords) != 2 {
 		t.Fatalf("got %d per-keyword forecasts, want 2", len(result.Keywords))
@@ -317,7 +318,7 @@ func TestGenerateKeywordIdeas_SendsGeoTargetAndNetwork(t *testing.T) {
 	client := keywordplanner.NewTestClient("dev-token", "123", "", srv.URL, srv.Client())
 	_, _ = client.GenerateKeywordIdeas(
 		context.Background(), []string{"go"}, "", "languageConstants/1000",
-		[]string{"geoTargetConstants/2036"}, "GOOGLE_SEARCH",
+		[]string{"geoTargetConstants/2036"}, "GOOGLE_SEARCH", keywordplanner.IdeaOptions{},
 	)
 
 	geo, ok := body["geoTargetConstants"].([]any)
@@ -343,7 +344,7 @@ func TestGenerateKeywordIdeas_OmitsGeoTargetWhenEmpty(t *testing.T) {
 	defer srv.Close()
 
 	client := keywordplanner.NewTestClient("dev-token", "123", "", srv.URL, srv.Client())
-	_, _ = client.GenerateKeywordIdeas(context.Background(), []string{"go"}, "", "", nil, "")
+	_, _ = client.GenerateKeywordIdeas(context.Background(), []string{"go"}, "", "", nil, "", keywordplanner.IdeaOptions{})
 
 	if _, present := body["geoTargetConstants"]; present {
 		t.Errorf("geoTargetConstants should be absent, got %v", body["geoTargetConstants"])
@@ -397,7 +398,7 @@ func TestPost_ReturnsFullErrorBody(t *testing.T) {
 	defer srv.Close()
 
 	client := keywordplanner.NewTestClient("dev-token", "123", "", srv.URL, srv.Client())
-	_, err := client.GenerateKeywordIdeas(context.Background(), []string{"test"}, "", "", nil, "")
+	_, err := client.GenerateKeywordIdeas(context.Background(), []string{"test"}, "", "", nil, "", keywordplanner.IdeaOptions{})
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

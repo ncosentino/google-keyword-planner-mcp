@@ -88,8 +88,8 @@ func TestHTTPTransport_ServesRealSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListTools: %v", err)
 	}
-	if len(tools.Tools) != 3 {
-		t.Errorf("tools = %d, want 3", len(tools.Tools))
+	if len(tools.Tools) != 4 {
+		t.Errorf("tools = %d, want 4", len(tools.Tools))
 	}
 
 	result, err := session.CallTool(ctx, &mcp.CallToolParams{

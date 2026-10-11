@@ -1,0 +1,17 @@
+{
+  "results": [
+    {
+      "text": "dependency injection",
+      "keywordMetrics": {
+        "avgMonthlySearches": "5000",
+        "competition": "LOW",
+        "competitionIndex": "23",
+        "lowTopOfPageBidMicros": "200000",
+        "highTopOfPageBidMicros": "800000",
+        "monthlySearchVolumes": [
+          {"year": "2026", "month": "SEPTEMBER", "monthlySearches": "4500"}
+        ]
+      }
+    }
+  ]
+}

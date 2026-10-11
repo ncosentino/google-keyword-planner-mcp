@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/oauth2"
@@ -21,6 +23,9 @@ const (
 	adsAPIBase    = "https://googleads.googleapis.com/v25"
 	adsAPIVersion = "v25"
 	httpTimeout   = 30 * time.Second
+
+	// forecastConcurrency caps the parallel requests of one keyword forecast.
+	forecastConcurrency = 5
 )
 
 // Client calls the Google Ads Keyword Planner API.
@@ -35,10 +40,12 @@ type Client struct {
 	defaultLanguage   string
 	defaultGeoTargets []string
 	planningLimiter   interface{ Wait(context.Context) error }
+	lookup            constantLookup
 }
 
-// SetDefaultTargeting sets the language and geo target resource names used by calls
-// that leave them empty. Empty defaults mean no restriction.
+// SetDefaultTargeting sets the language and geo targets used by calls that leave
+// them empty. Both accept the forms ResolveLanguage and ResolveGeoTargets accept.
+// Empty defaults mean no restriction.
 func (c *Client) SetDefaultTargeting(language string, geoTargets []string) {
 	c.defaultLanguage = language
 	c.defaultGeoTargets = geoTargets
@@ -133,6 +140,9 @@ func NewTestClient(developerToken, customerID, loginCustomerID, baseURL string, 
 // keywordPlanNetwork is "GOOGLE_SEARCH" or "GOOGLE_SEARCH_AND_PARTNERS"; when
 // empty the API default (search and partners) applies, which reads higher than
 // the search-only figure the Keyword Planner web UI shows by default.
+//
+// Ideas are returned sorted by average monthly searches, highest first; opts
+// filters and truncates that list.
 func (c *Client) GenerateKeywordIdeas(
 	ctx context.Context,
 	seedKeywords []string,
@@ -140,8 +150,9 @@ func (c *Client) GenerateKeywordIdeas(
 	language string,
 	geoTargetConstants []string,
 	keywordPlanNetwork string,
+	opts IdeaOptions,
 ) (*KeywordIdeasResponse, error) {
-	language, geoTargetConstants, err := c.targeting(language, geoTargetConstants)
+	language, geoTargetConstants, err := c.resolveTargeting(ctx, language, geoTargetConstants)
 	if err != nil {
 		return nil, err
 	}
@@ -149,26 +160,56 @@ func (c *Client) GenerateKeywordIdeas(
 	endpoint := fmt.Sprintf("%s/customers/%s:generateKeywordIdeas", c.baseURL, c.customerID)
 
 	var raw generateKeywordIdeasResponse
-	if err := c.post(ctx, endpoint, reqBody, &raw); err != nil {
-		return nil, err
+	seenPages := make(map[string]bool)
+	for {
+		var page generateKeywordIdeasResponse
+		if err := c.post(ctx, endpoint, reqBody, &page); err != nil {
+			return nil, err
+		}
+		raw.Results = append(raw.Results, page.Results...)
+		if page.NextPageToken == "" {
+			break
+		}
+		if seenPages[page.NextPageToken] {
+			return nil, fmt.Errorf("keyword ideas API repeated a pagination token")
+		}
+		seenPages[page.NextPageToken] = true
+		reqBody.PageToken = page.NextPageToken
 	}
 
 	ideas := make([]KeywordIdea, 0, len(raw.Results))
 	for _, r := range raw.Results {
-		ideas = append(ideas, KeywordIdea{
+		idea := KeywordIdea{
 			Text:                   r.Text,
 			AvgMonthlySearches:     parseI64(r.KeywordIdeaMetrics.AvgMonthlySearches),
 			Competition:            r.KeywordIdeaMetrics.Competition,
+			CompetitionIndex:       int32(parseI64(r.KeywordIdeaMetrics.CompetitionIndex)),
 			LowTopOfPageBidMicros:  parseI64(r.KeywordIdeaMetrics.LowTopOfPageBidMicros),
 			HighTopOfPageBidMicros: parseI64(r.KeywordIdeaMetrics.HighTopOfPageBidMicros),
-		})
+		}
+		if idea.AvgMonthlySearches < opts.MinMonthlySearches {
+			continue
+		}
+		if opts.IncludeMonthlyVolumes {
+			idea.MonthlySearchVolumes = toMonthlyVolumes(r.KeywordIdeaMetrics.MonthlySearchVolumes)
+		}
+		ideas = append(ideas, idea)
+	}
+	sort.SliceStable(ideas, func(i, j int) bool {
+		return ideas[i].AvgMonthlySearches > ideas[j].AvgMonthlySearches
+	})
+	if opts.Limit > 0 && len(ideas) > opts.Limit {
+		ideas = ideas[:opts.Limit]
 	}
 
 	return &KeywordIdeasResponse{
-		SeedKeywords: seedKeywords,
-		URL:          seedURL,
-		Ideas:        ideas,
-		Count:        len(ideas),
+		SeedKeywords:       seedKeywords,
+		URL:                seedURL,
+		Ideas:              ideas,
+		Count:              len(ideas),
+		TotalFound:         len(raw.Results),
+		Language:           language,
+		GeoTargetConstants: geoTargetConstants,
 	}, nil
 }
 
@@ -185,7 +226,7 @@ func (c *Client) GetHistoricalMetrics(
 	geoTargetConstants []string,
 	keywordPlanNetwork string,
 ) (*HistoricalMetricsResponse, error) {
-	language, geoTargetConstants, err := c.targeting(language, geoTargetConstants)
+	language, geoTargetConstants, err := c.resolveTargeting(ctx, language, geoTargetConstants)
 	if err != nil {
 		return nil, err
 	}
@@ -204,14 +245,6 @@ func (c *Client) GetHistoricalMetrics(
 
 	metrics := make([]KeywordMetrics, 0, len(raw.Results))
 	for _, r := range raw.Results {
-		monthly := make([]MonthlyVolume, 0, len(r.KeywordMetrics.MonthlySearchVolumes))
-		for _, m := range r.KeywordMetrics.MonthlySearchVolumes {
-			monthly = append(monthly, MonthlyVolume{
-				Year:            int32(parseI64(m.Year)),
-				Month:           parseMonthEnum(m.Month),
-				MonthlySearches: parseI64(m.MonthlySearches),
-			})
-		}
 		metrics = append(metrics, KeywordMetrics{
 			Text:                   r.Text,
 			AvgMonthlySearches:     parseI64(r.KeywordMetrics.AvgMonthlySearches),
@@ -219,7 +252,7 @@ func (c *Client) GetHistoricalMetrics(
 			CompetitionIndex:       int32(parseI64(r.KeywordMetrics.CompetitionIndex)),
 			LowTopOfPageBidMicros:  parseI64(r.KeywordMetrics.LowTopOfPageBidMicros),
 			HighTopOfPageBidMicros: parseI64(r.KeywordMetrics.HighTopOfPageBidMicros),
-			MonthlySearchVolumes:   monthly,
+			MonthlySearchVolumes:   toMonthlyVolumes(r.KeywordMetrics.MonthlySearchVolumes),
 		})
 	}
 
@@ -246,15 +279,19 @@ type ForecastRequest struct {
 //
 // The API returns one campaign-level aggregate per request, so this issues one
 // request per keyword to build the per-keyword breakdown, plus one request with
-// every keyword in a single ad group for the campaign total. The per-keyword
+// every keyword in a single ad group for the campaign total. The requests run
+// concurrently; a single keyword needs only one. The per-keyword
 // figures will not sum to the total: keywords in one ad group compete for the
 // same impressions and the total accounts for that overlap.
 func (c *Client) GetKeywordForecast(ctx context.Context, req ForecastRequest) (*ForecastResponse, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if len(req.Keywords) == 0 {
 		return nil, fmt.Errorf("at least one keyword is required")
 	}
 	var err error
-	req.Language, req.GeoTargetConstants, err = c.targeting(req.Language, req.GeoTargetConstants)
+	req.Language, req.GeoTargetConstants, err = c.resolveTargeting(ctx, req.Language, req.GeoTargetConstants)
 	if err != nil {
 		return nil, err
 	}
@@ -282,6 +319,9 @@ func (c *Client) GetKeywordForecast(ctx context.Context, req ForecastRequest) (*
 	// so start two days out.
 	period := forecastPeriodFor(time.Now(), forecastDays)
 	startDate, endDate := period.StartDate, period.EndDate
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	forecast := func(keywords []string) (KeywordForecastMetrics, error) {
 		infos := make([]forecastKeyword, 0, len(keywords))
@@ -326,19 +366,76 @@ func (c *Client) GetKeywordForecast(ctx context.Context, req ForecastRequest) (*
 
 	perKeyword := make([]KeywordForecastMetrics, 0, len(req.Keywords))
 	if req.IncludeKeywordBreakdown {
-		for _, kw := range req.Keywords {
-			metrics, err := forecast([]string{kw})
-			if err != nil {
-				return nil, fmt.Errorf("forecasting %q: %w", kw, err)
-			}
-			metrics.Text = kw
-			perKeyword = append(perKeyword, metrics)
+		perKeyword = make([]KeywordForecastMetrics, len(req.Keywords))
+	}
+	// The requests are independent, so run them concurrently. The first failure
+	// cancels the rest and is the error reported.
+	var (
+		total    KeywordForecastMetrics
+		wg       sync.WaitGroup
+		slots    = make(chan struct{}, forecastConcurrency)
+		failOnce sync.Once
+		firstErr error
+	)
+	run := func(job func() error) bool {
+		select {
+		case slots <- struct{}{}:
+		case <-ctx.Done():
+			return false
 		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() { <-slots }()
+			if ctx.Err() != nil {
+				return
+			}
+			if err := job(); err != nil {
+				failOnce.Do(func() {
+					firstErr = err
+					cancel()
+				})
+			}
+		}()
+		return true
 	}
 
-	total, err := forecast(req.Keywords)
-	if err != nil {
-		return nil, fmt.Errorf("forecasting combined ad group: %w", err)
+	if req.IncludeKeywordBreakdown {
+		for i, kw := range req.Keywords {
+			if !run(func() error {
+				metrics, err := forecast([]string{kw})
+				if err != nil {
+					return fmt.Errorf("forecasting %q: %w", kw, err)
+				}
+				metrics.Text = kw
+				perKeyword[i] = metrics
+				return nil
+			}) {
+				break
+			}
+		}
+	}
+	// A single keyword is its own ad group, so its forecast is the total.
+	if !req.IncludeKeywordBreakdown || len(req.Keywords) > 1 {
+		run(func() error {
+			metrics, err := forecast(req.Keywords)
+			if err != nil {
+				return fmt.Errorf("forecasting combined ad group: %w", err)
+			}
+			total = metrics
+			return nil
+		})
+	}
+	wg.Wait()
+	if firstErr != nil {
+		return nil, firstErr
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if req.IncludeKeywordBreakdown && len(req.Keywords) == 1 {
+		total = perKeyword[0]
+		total.Text = ""
 	}
 
 	return &ForecastResponse{
@@ -429,6 +526,18 @@ func (c *Client) buildKeywordIdeasRequest(
 		req.KeywordSeed = &keywordSeed{Keywords: seedKeywords}
 	}
 	return req
+}
+
+func toMonthlyVolumes(raw []monthlySearchVolume) []MonthlyVolume {
+	monthly := make([]MonthlyVolume, 0, len(raw))
+	for _, m := range raw {
+		monthly = append(monthly, MonthlyVolume{
+			Year:            int32(parseI64(m.Year)),
+			Month:           parseMonthEnum(m.Month),
+			MonthlySearches: parseI64(m.MonthlySearches),
+		})
+	}
+	return monthly
 }
 
 func parseI64(s string) int64 {
