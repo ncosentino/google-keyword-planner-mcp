@@ -30,20 +30,20 @@ public sealed class StdioTransportTests
         // hardcoding a relative path that would be fragile across Debug/Release
         // and TFM-specific output folders.
         var serverDllPath = typeof(Hosting).Assembly.Location;
+        var nativeBinary = Environment.GetEnvironmentVariable("KWP_TEST_NATIVE_BINARY");
+        string[] credentialArguments =
+        [
+            "--client-id", "client-id",
+            "--client-secret", "client-secret",
+            "--refresh-token", "refresh-token",
+            "--customer-id", "3778350596",
+        ];
 
         await using var client = await McpClient.CreateAsync(new StdioClientTransport(new StdioClientTransportOptions
         {
             Name = "kwp-mcp-stdio-test",
-            Command = "dotnet",
-            Arguments =
-            [
-                serverDllPath,
-                "--developer-token", "dev-token",
-                "--client-id", "client-id",
-                "--client-secret", "client-secret",
-                "--refresh-token", "refresh-token",
-                "--customer-id", "3778350596",
-            ],
+            Command = nativeBinary ?? "dotnet",
+            Arguments = nativeBinary is null ? [serverDllPath, .. credentialArguments] : credentialArguments,
         }));
 
         var tools = await client.ListToolsAsync();

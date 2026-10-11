@@ -66,6 +66,11 @@ jobs:
       - name: Publish Native AOT
         run: dotnet publish src/KeywordPlannerMcp/KeywordPlannerMcp.csproj -c Release -r linux-x64 -o /tmp/kwp-aot
 
+      - name: Smoke test Native AOT MCP discovery
+        env:
+          KWP_TEST_NATIVE_BINARY: /tmp/kwp-aot/kwp-mcp-csharp
+        run: dotnet test KeywordPlannerMcp.slnx --no-build -c Release --filter FullyQualifiedName~StdioTransportTests --logger "console;verbosity=minimal"
+
   docs:
     name: Build and deploy documentation
     runs-on: ubuntu-latest
