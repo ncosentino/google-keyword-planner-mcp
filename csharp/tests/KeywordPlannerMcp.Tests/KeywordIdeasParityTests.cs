@@ -155,8 +155,10 @@ public sealed class KeywordIdeasParityTests
         Assert.Equal(first.Language, second.Language);
         Assert.Equal(new[] { "geoTargetConstants/2040" }, second.GeoTargetConstants);
         Assert.Equal(2, handler.Requests.Count(r => r.Address.EndsWith("/googleAds:search", StringComparison.Ordinal)));
-        Assert.Contains("target_type = 'Country'", handler.Requests[1].Body);
-        Assert.Contains("status = 'ENABLED'", handler.Requests[1].Body);
+        using var countryRequest = JsonDocument.Parse(handler.Requests[1].Body);
+        var countryQuery = countryRequest.RootElement.GetProperty("query").GetString()!;
+        Assert.Contains("target_type = 'Country'", countryQuery);
+        Assert.Contains("status = 'ENABLED'", countryQuery);
         Assert.Equal(2, pacer.Calls);
         var overridden = await client.GenerateKeywordIdeasAsync(["seed"], null, "all", geoTargetConstants: []);
         Assert.Null(overridden.Language);

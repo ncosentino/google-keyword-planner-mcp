@@ -10,6 +10,8 @@ Use the shared synthetic v25 response fixtures in `testdata/google-ads/v25`
 from both test suites. Update them against authoritative Google API definitions,
 not the current implementation. Preserve optional metric presence and assert
 nonempty results so an incorrect response key cannot pass unnoticed.
+Parse captured JSON before asserting embedded query strings; serializers may
+escape quotes without changing their semantic value.
 
 Coordinate concurrency tests with barriers, cancellation and fake time, not
 sleep-based ordering assumptions. Verify cancellation never returns partial
