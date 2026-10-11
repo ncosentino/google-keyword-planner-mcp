@@ -2,13 +2,13 @@
 // Priority order: CLI flags > environment variables > .env file.
 //
 // Required credentials:
-//   - Developer token: GOOGLE_ADS_DEVELOPER_TOKEN
 //   - OAuth2 client ID: GOOGLE_ADS_CLIENT_ID
 //   - OAuth2 client secret: GOOGLE_ADS_CLIENT_SECRET
 //   - OAuth2 refresh token: GOOGLE_ADS_REFRESH_TOKEN
 //   - Google Ads customer ID: GOOGLE_ADS_CUSTOMER_ID
 //
 // Optional credentials:
+//   - Legacy developer token: GOOGLE_ADS_DEVELOPER_TOKEN (ignored by Google)
 //   - Login customer ID: GOOGLE_ADS_LOGIN_CUSTOMER_ID (manager account ID; required when
 //     GOOGLE_ADS_CUSTOMER_ID is a sub-account accessed through a manager/MCC account)
 //   - Default language: GOOGLE_ADS_DEFAULT_LANGUAGE (e.g. "languageConstants/1001")
@@ -69,7 +69,7 @@ type Flags struct {
 
 // IsComplete returns true when all required fields are populated.
 func (c Config) IsComplete() bool {
-	return c.DeveloperToken != "" && c.ClientID != "" &&
+	return c.ClientID != "" &&
 		c.ClientSecret != "" && c.RefreshToken != "" && c.CustomerID != ""
 }
 

@@ -21,9 +21,9 @@ catch (ArgumentException exception)
     return 1;
 }
 
-string? developerToken = CredentialResolver.ResolveCredential(
+string developerToken = CredentialResolver.ResolveCredential(
     args.SkipWhile(a => a != "--developer-token").Skip(1).FirstOrDefault(),
-    CredentialResolver.EnvDeveloperToken);
+    CredentialResolver.EnvDeveloperToken) ?? string.Empty;
 
 string? clientId = CredentialResolver.ResolveCredential(
     args.SkipWhile(a => a != "--client-id").Skip(1).FirstOrDefault(),
@@ -47,15 +47,14 @@ string? loginCustomerId = CredentialResolver.NormalizeCustomerId(
         args.SkipWhile(a => a != "--login-customer-id").Skip(1).FirstOrDefault(),
         CredentialResolver.EnvLoginCustomerId));
 
-if (string.IsNullOrWhiteSpace(developerToken) ||
-    string.IsNullOrWhiteSpace(clientId) ||
+if (string.IsNullOrWhiteSpace(clientId) ||
     string.IsNullOrWhiteSpace(clientSecret) ||
     string.IsNullOrWhiteSpace(refreshToken) ||
     string.IsNullOrWhiteSpace(customerId))
 {
     await Console.Error.WriteLineAsync(
         "ERROR: Incomplete Google Ads credentials. Required: " +
-        "GOOGLE_ADS_DEVELOPER_TOKEN, GOOGLE_ADS_CLIENT_ID, GOOGLE_ADS_CLIENT_SECRET, " +
+        "GOOGLE_ADS_CLIENT_ID, GOOGLE_ADS_CLIENT_SECRET, " +
         "GOOGLE_ADS_REFRESH_TOKEN, GOOGLE_ADS_CUSTOMER_ID. " +
         "Use --flag <value>, env vars, or a .env file.")
         .ConfigureAwait(false);

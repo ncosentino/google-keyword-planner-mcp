@@ -479,7 +479,9 @@ func (c *Client) post(ctx context.Context, endpoint string, body, out any) error
 		return fmt.Errorf("building request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("developer-token", c.developerToken)
+	if c.developerToken != "" {
+		req.Header.Set("developer-token", c.developerToken)
+	}
 	if c.loginCustomerID != "" {
 		req.Header.Set("login-customer-id", c.loginCustomerID)
 	}

@@ -167,7 +167,8 @@ internal sealed class KeywordPlannerClient(
         using var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}:{endpoint}");
         request.Content = OAuth2TokenProvider.JsonContent(JsonSerializer.Serialize(payload, requestType));
         await tokenProvider.AuthorizeAsync(request, cancellationToken);
-        request.Headers.Add("developer-token", developerToken);
+        if (!string.IsNullOrEmpty(developerToken))
+            request.Headers.Add("developer-token", developerToken);
         if (!string.IsNullOrWhiteSpace(loginCustomerId))
             request.Headers.Add("login-customer-id", loginCustomerId);
         await _pacer.WaitAsync(cancellationToken);
