@@ -8,6 +8,11 @@ from urllib.parse import quote, unquote, urlsplit, urlunsplit
 from markupsafe import escape
 
 
+def _schema_script(schema: dict) -> str:
+    payload = json.dumps(schema, indent=2, ensure_ascii=False).replace('<', '\\u003c')
+    return '<script type="application/ld+json">\n' + payload + '\n</script>\n'
+
+
 def on_page_markdown(markdown, page, config, files):
     if page.canonical_url:
         url = urlsplit(config.site_url)
@@ -34,10 +39,7 @@ def on_page_context(context, page, config, nav):
             'name': title,
             'description': description,
         }
-        payload = json.dumps(schema, ensure_ascii=False).replace('<', '\\u003c')
-        context['documentation_schema'] = (
-            '<script type="application/ld+json">' + payload + '</script>'
-        )
+        context['documentation_schema'] = _schema_script(schema)
         rendered_page = copy(context['page'])
         rendered_page.meta = {**rendered_page.meta, 'description': escape(description)}
         context['page'] = rendered_page
@@ -105,12 +107,7 @@ def _inject_howto_schema(html: str, page) -> str:
         'step': steps,
     }
 
-    script_tag = (
-        '<script type="application/ld+json">\n'
-        + json.dumps(schema, indent=2, ensure_ascii=False)
-        + '\n</script>\n'
-    )
-    return html + script_tag
+    return html + _schema_script(schema)
 
 
 def _inject_faq_schema(html: str, page) -> str:
@@ -140,9 +137,4 @@ def _inject_faq_schema(html: str, page) -> str:
         'mainEntity': questions,
     }
 
-    script_tag = (
-        '<script type="application/ld+json">\n'
-        + json.dumps(schema, indent=2, ensure_ascii=False)
-        + '\n</script>\n'
-    )
-    return html + script_tag
+    return html + _schema_script(schema)

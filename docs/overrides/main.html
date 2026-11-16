@@ -28,19 +28,19 @@
         "@type": "ListItem",
         "position": 1,
         "name": "Google Keyword Planner MCP",
-        "item": "{{ config.site_url }}"
+        "item": {{ config.site_url | tojson }}
       }{% for ancestor in page.ancestors %},
       {
         "@type": "ListItem",
         "position": {{ loop.index + 1 }},
-        "name": "{{ ancestor.title }}",
-        "item": "{{ config.site_url }}"
+        "name": {{ ancestor.title | tojson }},
+        "item": {{ config.site_url | tojson }}
       }{% endfor %},
       {
         "@type": "ListItem",
         "position": {{ page.ancestors | length + 2 }},
-        "name": "{{ page.title }}",
-        "item": "{{ page.canonical_url }}"
+        "name": {{ page.title | tojson }},
+        "item": {{ page.canonical_url | tojson }}
       }
     ]
   }
@@ -52,8 +52,8 @@
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "Google Keyword Planner MCP",
-    "description": "{{ config.site_description }}",
-    "url": "{{ config.site_url }}",
+    "description": {{ config.site_description | tojson }},
+    "url": {{ config.site_url | tojson }},
     "downloadUrl": "https://github.com/ncosentino/google-keyword-planner-mcp/releases/latest",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Linux, macOS, Windows",
