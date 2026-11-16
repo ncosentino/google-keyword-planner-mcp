@@ -8,6 +8,7 @@ import unittest
 
 from mkdocs.commands.build import build
 from mkdocs.config import load_config
+from mkdocs.structure.files import get_files
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -57,9 +58,11 @@ class DocumentationSchemaTests(unittest.TestCase):
         return schema
 
     def test_published_documentation(self):
+        config = load_config(config_file=str(ROOT / 'mkdocs.yml'))
         checked = 0
-        for path in (ROOT / 'site').rglob('*.html'):
-            with self.subTest(path=str(path.relative_to(ROOT / 'site'))):
+        for source in get_files(config).documentation_pages():
+            path = Path(config.site_dir) / source.dest_uri
+            with self.subTest(source=source.src_uri):
                 page = Metadata(path)
                 if any(item.get('@type') in ('TechArticle', 'WebPage') for item in page.schemas):
                     self.check_identity(path)
