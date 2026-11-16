@@ -4,6 +4,13 @@ description: Build the Google Keyword Planner MCP server from source using Go or
 
 # Building from Source
 
+Documentation emits a page-specific `WebPage` using existing description frontmatter.
+Its name matches the HTML and social title; its identity matches the slashless,
+URI-escaped canonical URL. Pages without an authored description are excluded rather
+than receiving an invented summary. Existing project and instructional schemas remain.
+The documentation CI job checks built metadata and punctuation/script escaping with
+`python scripts/test-docs-schema.py` after the MkDocs build.
+
 ## Go
 
 **Requirements:** Go 1.26+ (matching `go/go.mod`; the `go-sdk` dependency itself requires 1.25+)

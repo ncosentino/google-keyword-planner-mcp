@@ -2,6 +2,46 @@
 
 import json
 import re
+from copy import copy
+from urllib.parse import quote, unquote, urlsplit, urlunsplit
+
+from markupsafe import escape
+
+
+def on_page_markdown(markdown, page, config, files):
+    if page.canonical_url:
+        url = urlsplit(config.site_url)
+        path = url.path if page.is_homepage else url.path.rstrip('/') + '/' + page.url
+        path = '/'.join(quote(unquote(part), safe='') for part in path.split('/'))
+        page.canonical_url = urlunsplit(url._replace(path=path.rstrip('/')))
+    return markdown
+
+
+def on_page_context(context, page, config, nav):
+    title = page.meta.get('title') or page.title
+    title = config.site_name if page.is_homepage else f'{title} - {config.site_name}'
+    context['documentation_title'] = title
+    description = page.meta.get('description')
+    context['documentation_schema'] = ''
+    if description:
+        if not isinstance(description, str):
+            raise ValueError(f'{page.file.src_uri}: description must be a string.')
+        schema = {
+            '@context': 'https://schema.org',
+            '@type': 'WebPage',
+            '@id': page.canonical_url,
+            'url': page.canonical_url,
+            'name': title,
+            'description': description,
+        }
+        payload = json.dumps(schema, ensure_ascii=False).replace('<', '\\u003c')
+        context['documentation_schema'] = (
+            '<script type="application/ld+json">' + payload + '</script>'
+        )
+        rendered_page = copy(context['page'])
+        rendered_page.meta = {**rendered_page.meta, 'description': escape(description)}
+        context['page'] = rendered_page
+    return context
 
 
 def _extract_h2_sections(html: str) -> list[tuple[str, str]]:
